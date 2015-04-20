@@ -8,7 +8,7 @@ kaj**gps** is an app for managing your geodata, both track files and placemarks.
 
 ## Purpose of kaj**foto** ##
 
-Testing how to make ä change
+Testing how to make änöther change - commit and push at the same time
 
 kaj**foto** is directed at users who at times feel **more productive at the command level** than when constrained by having to use the mouse.
 
