@@ -2,7 +2,7 @@
 
 kaj**gps** is an app for managing your geodata, both track files and placemarks.
 
-![Logo](https://lh3.googleusercontent.com/-N1ypd05pwcs/U9_Vny0UaqI/AAAAAAAAUas/v-eKASeEogk/s288/kajfoto-rect-logo-green.png)
+![Logo](https://lh3.googleusercontent.com/-KouDlj6ewlQ/VTUaFSBIlHI/AAAAAAAAUu0/WDKwZf2NXO8/s288/kajgps-green.png)
 
 (Pronunciation note: "*Kaj*" rhymes with "*rye*")
 
