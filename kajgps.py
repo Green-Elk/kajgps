@@ -163,7 +163,7 @@ class Trackpoint(Point):
 
 class Timepoint(Trackpoint):
     """Statistics for one minute hh:mm (hh:mm:00 until hh:m1:00, \
-hh:m1 = one minute later)"""
+hh:m1 = one minute later)ff"""
 
     def __init__(self, lat, lon, dateandtime, alt=0.0, text=None, **kwargs):
         super(Timepoint, self).__init__(lat, lon, dateandtime, alt, text)
