@@ -36,7 +36,7 @@ activities for trips are identified. This involves
 And it involves creating an easy overview (in both HTML and KML) of currently 
 determined activities.
 
-## Basic logic
+## Basic logic / order of allocation
 
 The overall logic by which activities are chosen is this
 
@@ -47,6 +47,8 @@ The overall logic by which activities are chosen is this
 
 The logic of 1-2-3-4 is re-applied for each run, as the end user can have 
 made corrections in the day-activity allocation.
+
+### Known limitations
 
 The above logic is less than ideal, in the scenario of several tracks per 
 day. Having several tracks per day may be due to having several measurements 
