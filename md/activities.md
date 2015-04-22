@@ -29,10 +29,10 @@ heuristics.
 
 A key factor is **the speed of the iterative process**, by which correct 
 activities for trips are identified. This involves
-* keeping the amount of user input low, 
-* keeping the heuristics smart, 
-* keeping the batch runs short, and 
-* keeping the data entry of exceptions easy. 
+* keeping the **amount of user input low**, 
+* keeping the **heuristics smart**, 
+* keeping the **batch runs short**, and 
+* keeping the **data entry of exceptions easy**. 
 And it involves creating an easy overview (in both HTML and KML) of currently 
 determined activities.
 
@@ -40,10 +40,10 @@ determined activities.
 
 The overall logic by which activities are chosen is this
 
-1. User input of activity by day. 
-2. Default from previous batch run of activities.
-3. Heuristics based on distance, speed, and altitude change.
-4. User input on exceptions, by day and hour of day.
+1. **User input** of activity **by day**. 
+2. Default from **previous batch** run of activities.
+3. **Heuristics** based on distance, speed, and altitude change.
+4. **User input** on exceptions, by day and **hour of day**.
 
 The logic of 1-2-3-4 is re-applied for each run, as the end user can have 
 made corrections in the day-activity allocation.
