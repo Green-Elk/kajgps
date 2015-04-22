@@ -109,6 +109,8 @@ class SVG(object):
         self.colors = colors
         self.map = None
         self.pixels = None
+        self.last_within = False
+        self.mid_points = []
 
         self.set_canvas()
 
@@ -290,7 +292,6 @@ class SVG(object):
         margin = 0.4
         font_size = 3.0
         stroke_width = 0.3
-        fi_blue = '#0091FF'
         width = 2.3 * len(text.decode('utf-8'))  # SJÄLÖ is otherwise 7 char
         inner_width = width - 2 * margin
         inner_height = height - 2 * margin
@@ -302,21 +303,115 @@ class SVG(object):
         xc = x
         yc = y + font_size + 0.5
 
-        style_a = {'fill': fi_blue, 'stroke-width': 0}
-        style_b = {'fill': fi_blue, 'stroke-width': stroke_width, 'stroke': 'white'}
+        style_a = {'fill': FI_BLUE, 'stroke-width': 0}
+        style_b = {'fill': FI_BLUE, 'stroke-width': stroke_width, 'stroke': 'white'}
         style_c = {'fill': 'white', 'font-size': font_size, 'text-anchor': 'middle'}
+        rt = self.plot_text_mm(xc, yc, text, style_c)
+        if rt == "":
+            return ""
         r = self.plot_rect_mm(xa, ya, width, height, style_a)
         r += self.plot_rect_mm(xb, yb, inner_width, inner_height, style_b)
-        r += self.plot_text_mm(xc, yc, text, style_c)
+        r += rt
         return r
 
+    def plot_blue_sign(self, cx, cy, r):
+        s = '<circle cx="%s" cy="%s" r="%s" fill="%s" '
+        s += 'stroke="white" stroke-width="0.0" />\n'
+        return (s % (cx, cy, r, FI_BLUE))
+
     def polyline_begin(self, style_dict=None, class_="", marker=""):
+        self.last_within = False
+        self.is_first = True
         self.canvas['polyline'] = {'style': self.style(style_dict),
                                    'marker': marker,
                                    'class_': class_, 'points': []}
 
     def polyline_add_point(self, x, y):
-        self.canvas['polyline']['points'].append([x, y])
+        border = self.canvas['inner']['mm']
+        just_went_outside = False
+        within = (border['left'] < x < border['right'] and
+                  border['bottom'] > y > border['top'])
+        if within:
+            just_came_inside = not self.last_within and not self.is_first
+            if just_came_inside:
+                print "just came inside"
+                x_mid, y_mid = self.mid_point(x, y, self.prev_x, self.prev_y)
+                self.canvas['polyline']['points'].append([x_mid, y_mid])
+                print "xmid %s ymid %s" % (x_mid, y_mid)
+            self.canvas['polyline']['points'].append([x, y])
+        else:
+            just_went_outside = self.last_within
+            if just_went_outside:
+                print "just went outside"
+                x_mid, y_mid = self.mid_point(self.prev_x, self.prev_y, x, y)
+                self.canvas['polyline']['points'].append([x_mid, y_mid])
+                print "xmid %s ymid %s" % (x_mid, y_mid)
+        self.prev_x = x
+        self.prev_y = y
+        self.last_within = within
+        self.is_first = False
+        return just_went_outside
+
+    def mid_point(self, x_in, y_in, x_out, y_out):
+        border = self.canvas['inner']['mm']
+        west_mm = border['left']
+        east_mm = border['right']
+        north_mm = border['top']
+        south_mm = border['bottom']
+        x_border = west_mm if x_out < west_mm else east_mm
+        y_border = north_mm if y_out < north_mm else south_mm
+        x_diff = x_out - x_in
+        y_diff = y_out - y_in
+        x_is_outside = x_out < west_mm or x_out > east_mm
+        y_is_outside = y_out > south_mm or y_out < north_mm
+        if x_is_outside:
+            if y_is_outside:
+                x_mid = x_in + abs((y_border - y_in) / y_diff) * x_diff
+                y_mid = y_in + abs((x_border - x_in) / x_diff) * y_diff
+            else:
+                x_mid = x_border
+                if y_diff == 0:
+                    y_mid = y_in
+                else:
+                    y_mid = y_in + abs((x_border - x_in) / x_diff) * y_diff
+        else:
+            if y_is_outside:
+                y_mid = y_border
+                if x_diff == 0:
+                    x_mid = x_in
+                else:
+                    x_mid = x_in + abs((y_border - y_in) / y_diff) * x_diff
+            else:
+                print("%s, %s isn't outside at all; trivial case" %
+                      (x_out, y_out))
+                x_mid = x_out
+                y_mid = y_out
+
+        mid_dict = {'border': border,
+                    'x': {'border': x_border, 'in': x_in, 'out': x_out,
+                          'diff': x_diff, 'is_outside': x_is_outside},
+                    'y': {'border': y_border, 'in': y_in, 'out': y_out,
+                          'diff': y_diff, 'is_outside': y_is_outside},
+                    'mid': {'x': x_mid, 'y': y_mid},
+                    'is': {'last': self.last_within, 'first': self.is_first}}
+        self.mid_points.append(mid_dict)
+        return x_mid, y_mid
+
+    def list_midpoints(self):
+        for mid_dict in self.mid_points:
+            border = mid_dict['border']
+            x = mid_dict['x']
+            y = mid_dict['y']
+            mid = mid_dict['mid']
+            is_ = mid_dict['is']
+            xy = "in {in:.1f} out {out:.1f} diff {diff:.1f}"
+            x_f = "\nx %s <- " % (fmt.onedecimal(mid['x']))
+            x_f += xy.format(**x)
+            y_f = "\ny %s <- " % (fmt.onedecimal(mid['y']))
+            y_f += xy.format(**y)
+            x_f += " (%s - %s)" % (border['left'], border['right'])
+            y_f += " (%s - %s)" % (border['top'], border['bottom'])
+            print("%s %s %s" % (x_f, y_f, "last {last} first {first}".format(**is_)))
 
     def plot_polyline(self):
         polyline = self.canvas['polyline']
@@ -437,3 +532,5 @@ class Pixels(object):
             for y in range(y1, y2):
                 no_text = no_text and not self.matrix[y][x]
         return no_text
+
+FI_BLUE = '#0091FF'

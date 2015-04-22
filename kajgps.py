@@ -352,7 +352,7 @@ class Placetypes(lib.Config):
 
     @staticmethod
     def _svg_src(svg_icon):
-        return "file:///Users/kaj/Documents/py/svg/allt/%s" % svg_icon
+        return _ICON_DIR % svg_icon
 
     def img(self, placetype, size=40):
         return self.img_url(placetype.url, size)
@@ -1198,23 +1198,7 @@ class Tracklist(object):
         last_track = len(self.tracks) - 1
         title = self.header
         desc = fmt.dmyy(self.min_date) + "-" + fmt.dmyy(self.max_date)
-        print self.map_area
-        """
-        self.map_area['min']['lat'] = 46.41
-        self.map_area['mid']['lat'] = 46.51
-        self.map_area['max']['lat'] = 46.61
-        self.map_area['min']['lon'] = 11.71
-        self.map_area['mid']['lon'] = 11.87
-        self.map_area['max']['lon'] = 12.03
-
-        self.map_area['min']['lat'] = 46.4166
-        self.map_area['mid']['lat'] = 46.5083
-        self.map_area['max']['lat'] = 46.6
-        self.map_area['min']['lon'] = 11.666
-        self.map_area['mid']['lon'] = 11.858
-        self.map_area['max']['lon'] = 12.05
-        """
-
+        print "tracklist as_svg %s " % self.map_area
         fixed = None
         if self.kwargs['lat'] != "":
             fixed = {'mid_lat': float(self.kwargs['lat']),
@@ -1238,21 +1222,33 @@ class TrackCache(object):
         filename = ("ge_segments.csv" if self.mode == "edit" else
                     "ge_segments_new.csv")
         self.infile = os.path.join(self.dir_, filename)
+        self.header = kwargs['header']
         self.cache = []
         self.fields = ("date time_start time_stop activity_id " +
                        "distance duration speed count " +
                        "hm_up hm_down start_dist name " +
                        "max_lat min_lat max_lon min_lon").split()
 
+        self.activity_id = kwargs['activity_id']
+        self.min_date = datetime.datetime.min
+        self.max_date = datetime.datetime.min
+
         self._import_csv(self.infile)
+        self._remove_duplicates()
         if self.mode == "edit":
-            self._remove_duplicates()
             self.adjust_activity()
-            self._save_seg_dicts_as_csv()
-        elif self.mode == "kml":
-            self._load_tracks()
-            self._sort_tracks()
-            self._save_seg_dicts_as_kml()
+            self.save_as_csv()
+            return
+
+        self.fixed = {'mid_lat': float(self.kwargs['lat']),
+                      'mid_lon': float(self.kwargs['lon']),
+                      'width_km': float(self.kwargs['km']),
+                      'orientation': self.kwargs['mode']}
+        self.svg_map = SVGMap(svg, fixed=self.fixed, icon=self.activity_id)
+        self.canvas_area = self.svg_map.svg.canvas['inner']
+
+        self._load_tracks(self.canvas_area)
+        self._sort_tracks()
 
     def _import_csv(self, infile):
         if not os.path.exists(infile):
@@ -1276,6 +1272,22 @@ class TrackCache(object):
                         seg_dict[field] = value
                     self._make_numeric(seg_dict)
                     self.cache.append(seg_dict)
+
+    @logged
+    def save_as(self, filename):
+        file_format = filename.split(".")[-1]
+        if file_format == 'csv':
+            self.save_as_csv()
+            return
+        if file_format == 'kml':
+            a_str = self.as_kml()
+        elif file_format == 'html':
+            a_str = self.as_html()
+        elif file_format == 'svg':
+            a_str = self.as_svg()
+        else:
+            raise Exception("Unknown file format %s" % file_format)
+        lib.save_as(filename, a_str, verbose=True)
 
     def _remove_duplicates(self):
         clean = []
@@ -1305,7 +1317,7 @@ class TrackCache(object):
             self._clean_before_save(seg_dict)
         print "adjust_activity: A total of %s rows changed" % i
 
-    def _save_seg_dicts_as_csv(self):
+    def save_as_csv(self):
         filename = os.path.join(self.dir_, 'ge_segments_new.csv')
         with open(filename, 'w') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=self.fields,
@@ -1318,16 +1330,77 @@ class TrackCache(object):
                 writer.writerow(seg_dict)
             print("Edited track cache metadata saved on file %s" % filename)
 
-    def _load_tracks(self):
+    def as_html(self):
+        html.set_title_desc(self.kwargs['header'], self.kwargs['infile'])
+        h = html.doc_header()
+        h += html.start_table(column_count=3)
+        last_area = last_activity_id = last_date = ""
+        for seg_dict in self.cache:
+            area = "a"
+            activity_id = "b description"
+            date = "c with name"
+            if area != last_area:
+                h += html.h2(area)
+            if activity_id != last_activity_id:
+                h += html.h3(activity_id)
+            if date != last_date:
+                h += html.h4(date)
+            h += self.seg_dict_as_html(with_date=False)
+            last_area = area
+            last_activity_id = activity_id
+            last_date = date
+        h += html.end_table()
+        h += html.doc_footer()
+        return h
+
+    def seg_dict_as_html(self, with_date):
+        return ""
+
+    def as_svg(self):
+        s = ""
+        print "as svg"
+        last_track = self.count() - 1
+        title = self.header
+        desc = fmt.dmyy(self.min_date) + "-" + fmt.dmyy(self.max_date)
+        for i, seg_dict in enumerate(self.cache):
+            track = seg_dict.get('track')
+            if track is not None:
+                print "as svg i %s" % i
+                append = i > 0
+                final = i == last_track
+                final = False
+                s += track.as_svg(self.canvas_area, self.fixed, title, desc,
+                                  append, final)
+        s += self.svg_map.draw_placemarks(_places)
+        s += svg.doc_footer()
+        return s
+
+    def count(self):
+        return len(self.cache)
+
+    def _load_tracks(self, canvas_area):
         c = len(self.cache)
+        j = 0
         for i, seg_dict in enumerate(self.cache):
             filename = self._csv_filename(seg_dict)
             activity_id = seg_dict['activity_id']
             filename = os.path.join(self.dir_, activity_id, filename)
-            if i < 10000:
-                track = Track(filename, activity_id=activity_id,
-                              mode="read", comment="%s / %s" % (i + 1, c))
+            lat1_ok = (seg_dict['max_lat'] > canvas_area['lat']['bottom'])
+            lat2_ok = (seg_dict['min_lat'] < canvas_area['lat']['top'])
+            lon1_ok = (seg_dict['max_lon'] > canvas_area['lon']['left'])
+            lon2_ok = (seg_dict['min_lon'] < canvas_area['lon']['right'])
+            within_map = lat1_ok and lat2_ok and lon1_ok and lon2_ok
+            if within_map:
+                track = Track(filename, activity_id=activity_id, mode="read",
+                              main_activity_id=self.activity_id,
+                              comment="%s / %s (%s)" % (i + 1, c, j))
                 seg_dict['track'] = track
+                if j == 0:
+                    self.min_date = track.date
+                    self.max_date = track.date
+                self.min_date = min(self.min_date, track.date)
+                self.max_date = max(self.max_date, track.date)
+                j += 1
                 first_tp = track.trackpoints[0]
                 date = first_tp.date_yymd()
                 seg_dict['date_order'] = date
@@ -1348,7 +1421,7 @@ class TrackCache(object):
         self.cache.sort(key=lambda seg: seg['area'] + seg['activity_id'] +
                                         seg['date_order'] + seg['time_start'])
 
-    def _save_seg_dicts_as_kml(self):
+    def as_kml(self):
         seg_fmt = "{time_start:.5}-{time_stop:.5} {distance_fmt} km "
         seg_fmt += "{duration} {speed_fmt} km/h %s"
         k = kml.doc_header(self.kwargs['header'])
@@ -1358,8 +1431,9 @@ class TrackCache(object):
             area = seg_dict['area']
             activity_id = seg_dict['activity_id']
             activity_name = _activities[activity_id].name
-            color = _activities[activity_id].color.split("/")[0]
+            color = _activities[activity_id].color1
             color = lib.rgb2aabbggrr(color)
+            color2 = _activities[activity_id].color2
             date_name = seg_dict['date'] + " " + seg_dict['date_header']
             u_safe_name = seg_dict['name'].decode("utf-8")
             u_safe_name = u_safe_name[0:20].encode("utf-8")
@@ -1400,8 +1474,7 @@ class TrackCache(object):
         k += kml.end_section("final " + last_activity_id)
         k += kml.end_section("final " + last_area)
         k += kml.doc_footer()
-        filename = self.kwargs['outfile']
-        lib.save_as(filename, k, True)
+        return k
 
     @staticmethod
     def _make_numeric(seg_dict):
@@ -1413,6 +1486,10 @@ class TrackCache(object):
         seg_dict['hm_up'] = int(seg_dict['hm_up'])
         seg_dict['hm_down'] = int(seg_dict['hm_down'])
         seg_dict['count'] = int(seg_dict['count'])
+        seg_dict['min_lat'] = float(seg_dict['min_lat'])
+        seg_dict['max_lat'] = float(seg_dict['max_lat'])
+        seg_dict['min_lon'] = float(seg_dict['min_lon'])
+        seg_dict['max_lon'] = float(seg_dict['max_lon'])
 
     @staticmethod
     def _revert_numeric(seg_dict):
@@ -1840,25 +1917,32 @@ class Segment(object):
         return s
 
     def as_slope_svg(self):
-        last_colour = "Grey"  # Neutral colour
+        last_colour = "#" + _activities[self.activity_id].color1
         s = ""
         last_x = last_y = 0.0
-        svg.polyline_begin({'stroke': last_colour})
+        svg.polyline_begin({'stroke': last_colour, 'stroke-width': 0.3})
         for i in range(self.i_start_tp, self.i_end_tp + 1):
             tp = self.track.trackpoints[i]
+            colour = self.track.color(tp)
             x, y = svg.map.latlon2xy(tp.lat, tp.lon)
-            if i > self.i_start_tp:
-                colour = self.track.timepoint_color(tp)
-                if colour != last_colour:
-                    s += svg.plot_polyline()
+            is_first_point = (i == self.i_start_tp)
+            if not is_first_point:
+                slope_changed = (colour != last_colour)
+                if slope_changed:
+                    s += svg.plot_polyline()  # Plot what's in the "buffer"
                     s += svg.comment("Slope %s" % colour)
-                    svg.polyline_begin({'stroke': colour, 'stroke-width': 0.5})
+                    svg.polyline_begin({'stroke': colour, 'stroke-width': 0.3})
                     svg.polyline_add_point(last_x, last_y)
-                    last_colour = colour
-            svg.polyline_add_point(x, y)
+            lift_pen = svg.polyline_add_point(x, y)
+            if lift_pen:
+                s += svg.plot_polyline()
+                s += svg.comment("Went outside map borders")
+                svg.polyline_begin({'stroke': colour, 'stroke-width': 0.3})
             last_x = x
             last_y = y
+            last_colour = colour
         s += svg.plot_polyline()
+        svg.list_midpoints()
         return s
 
 
@@ -1868,10 +1952,13 @@ class Track(object):
         kwargs['infile'] = infile
         self.kwargs = kwargs
         self.filename = infile
+        self.from_source = ("" if infile is None else
+                            "/src/" not in self.filename)
         self.mode = kwargs.get('mode', 'segment')
         self.name = kwargs.get('header', "")
         self.diary = kwargs.get('diary')
         self.activity_id = kwargs.get('activity_id', 'run')
+        self.main_activity_id = kwargs.get('main_activity_id', 'run')
 
         self.trackpoints = []
         self.segments = []
@@ -1899,6 +1986,8 @@ class Track(object):
         seconds = 0
         if have_day_metadata:
             seconds = 60 * int(_day_metadata[date].timezone)
+            seconds = 0 if not self.from_source else seconds
+            # Don't apply time zone more than once
             self.activity_id = _day_metadata[date].activity_id
             if self.name == "":
                 self.name = _day_metadata[date].name
@@ -1923,6 +2012,8 @@ class Track(object):
         # self._list_timepoints()
         self._calc_nwse()
         if self.mode == "read":
+            segment = Segment(self, 0, self.count() -1, self.activity_id)
+            self.segments.append(segment)
             return
         self._suggest_segments()
         self._split_track_at_peaks()
@@ -2321,6 +2412,14 @@ class Track(object):
             else:
                 print str(timepoint)
             time_minute += one_minute
+
+    def color(self, tp):
+        if self.activity_id in ['downhill', 'snowboard']:
+            return self.timepoint_color(tp)
+        color1 = _activities[self.activity_id].color1
+        color2 = _activities[self.activity_id].color2
+        # todo color2 is for up/downhill, once implemented
+        return "#" + color1
 
     def timepoint_color(self, tp):
         time = tp.time_hm()
@@ -2816,7 +2915,8 @@ class Track(object):
         map_area = None if fixed is not None else map_area
         # If fixed coordinates given, they should overrule
 
-        svg_map = SVGMap(svg, map_area=map_area, fixed=fixed)
+        svg_map = SVGMap(svg, map_area=map_area, fixed=fixed,
+                         icon=self.main_activity_id)
         if not append:
             svg.empty_canvas()
         svg.set_title(title, desc)
@@ -2827,9 +2927,6 @@ class Track(object):
             s += svg_map.draw_map_frame()
             s += svg_map.plot_map_grid(svg_map.spread_km)
             s += svg_map.draw_header(title, desc)
-            #s += use_template % (self.activity_id + "-sign", x - 7, y - 3,
-            #                "black", 5)
-            # todo - this sign may not exist, or needs to be created
             s += svg_map.plot_scale()
         s += segments()
         #s += svg_map.svg.draw_pixels()  # For verifying non-printing
@@ -2842,7 +2939,7 @@ class Track(object):
 class SVGMap(object):
     """Map plotting lats and lons on SVG"""
 
-    def __init__(self, svg_, fixed=None, map_area=None):
+    def __init__(self, svg_, fixed=None, map_area=None, icon=None):
         """
         Set up a map in an existing SVG object, either
          - based on fixed coordinates given (lat lon of map middle + width km),
@@ -2854,6 +2951,8 @@ class SVGMap(object):
         self.fixed = fixed
         self.map_area = map_area
         self.svg_comment = ""
+        self.icon = icon
+        print "SVGMap Icon %s" % self.icon
         svg_.set_canvas("A4")
         svg_.reset_margins()
         svg_.def_margins('outer', 'mm', 15, 13, 15, 8)
@@ -2957,7 +3056,6 @@ class SVGMap(object):
         svg.map = self
 
         if svg.canvas.get('user') is None:
-            print "svg.canvas.get('user') is None:"
             svg.canvas['user'] = {'lat': {'y_mid': self.mid_lat},
                                   'lon': {'x_mid': self.mid_lon}}
 
@@ -3010,8 +3108,7 @@ class SVGMap(object):
         s += svg.plot_frame('inner', {'stroke': 'Green'})
         return s
 
-    @staticmethod
-    def draw_header(title, desc):
+    def draw_header(self, title, desc):
         use_template = '<use xlink:href="#%s" style="fill:%s;" '
         use_template += 'transform="translate(%s %s) scale(%s)" />\n'
         x = svg.canvas['inner']['mm']['left']
@@ -3022,6 +3119,12 @@ class SVGMap(object):
 
         s += svg.plot_header(desc, 'outer', 'right', 'top',
                              style_dict={'font-size': 4})
+        if self.icon is not None:
+            cx = x + 17
+            cy = y + 24
+            r = 15
+            s += svg.plot_blue_sign(cx, cy, r)
+            s += use_template % (self.icon , "white", cx - 14, cy - 13, 5.0)
         dimensions = "%s km x %s km" % (
             fmt.onedecimal(svg.canvas['inner']['km']['width']),
             fmt.onedecimal(svg.canvas['inner']['km']['height']))
@@ -3030,6 +3133,7 @@ class SVGMap(object):
         y = svg.canvas['outer']['mm']['bottom'] + 6
         s += use_template % ("elk-inv", lib.app_color(_colors, 'Green'),
                              x - 4, y - 5, 1.7)
+
         s += svg.plot_header("Green Elk %s " % fmt.current_timestamp(),
                              'outer', 'left', 'bottom',
                              +12, style_dict={'font-size': 2.5})
@@ -3510,6 +3614,22 @@ class Command(object):
         else:
             self._execute_commands(user_input)
 
+    @staticmethod
+    def str_(row):
+        s = "{command}: mode {mode} parameters {parameters} header {header}\n"
+        s += "  {activity_id} lat {lat} lon {lon} km {km}\n"
+        s += "  in {infile} out {outfile}"
+        return s.format(row)
+
+    @staticmethod
+    def as_dict(row):
+        return {'command': row.command, 'mode': row.mode,
+                'parameters': row.parameters, 'header': row.header,
+                'activity_id': row.activity,
+                'lat': row.lat, 'lon': row.lon, 'km': row.km,
+                'infile': os.path.expanduser(row.infile),
+                'outfile': os.path.expanduser(row.outfile)}
+
     def _execute_commands(self, user_input):
         global _debug_object, _day_metadata, _time_metadata, _svg_icon_file
         global _places
@@ -3519,10 +3639,7 @@ class Command(object):
             infile = os.path.expanduser(row.infile)
             outfile = os.path.expanduser(row.outfile)
             _debug_object = row.command
-            params = {'mode': row.mode, 'parameters': row.parameters,
-                      'header': row.header, 'activity_id': row.activity,
-                      'lat': row.lat, 'lon': row.lon, 'km': row.km,
-                      'infile': infile, 'outfile': outfile}
+            params = self.as_dict(row)
             lib.log_event(command + " " + infile)
 
             dir_ = infile
@@ -3549,9 +3666,12 @@ class Command(object):
             elif command == 'Timetable':
                 timetable = Timetable(**params)
                 timetable.save_as(outfile)
-            elif command == 'Map':
+            elif command == 'Cache':
                 cache = TrackCache(**params)
-                #lib.save_as(outfile, svg_map, verbose=True)
+                if cache.count == 0:
+                    print("No rows matching criteria %s" % self.str_(row))
+                else:
+                    cache.save_as(outfile)
             elif command == 'SVG':
                 svg_map = self._svg_test_output()
                 lib.save_as(outfile, svg_map, verbose=True)
@@ -3755,7 +3875,7 @@ config_files = {
                   'fields': 'id category url svg color ' +
                             'prominence terra'},
     'Activity': {'filename': 'ge_activities.csv', 'item': 'Activity',
-                 'fields': 'activity_id order name color ' +
+                 'fields': 'activity_id order name color1 color2 ' +
                            'min_speed alt_slow max_speed alt_fast ' +
                            'tick_long tick_short time_window_s ' +
                            'window_dist_m final_hop_m minimum_break_s'},
@@ -3803,6 +3923,7 @@ for areaname in _areanames:
                                           areaname.lat, areaname.lon))
 _forcedbreaks = lib.Config(**config_files['Forcedbreak'])
 _places = Places(config.config['places_file'])
+_ICON_DIR = "file:///Users/kaj/Documents/py/svg/allt/%s"
 _svg_icon_file = os.path.join(config_file_dir, csv_filename['svg_icons'])
 print "_svg_icon_file %s" % _svg_icon_file
 
