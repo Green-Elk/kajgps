@@ -6,11 +6,13 @@ kaj**gps** is an app for managing your geodata, both track files and placemarks.
 
 (Pronunciation note: "*Kaj*" rhymes with "*rye*")
 
-## Purpose of kaj**foto** ##
+## Purpose of kaj**gps** ##
 
 Testing how to make änöther change - commit and push at the same time
 
 kaj**foto** is directed at users who at times feel **more productive at the command level** than when constrained by having to use the mouse.
+
+How are !(md/activities.md) allocated?
 
 For any OS X 10.6+ users: kaj**foto** enables you to
 
