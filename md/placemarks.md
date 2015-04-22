@@ -9,13 +9,14 @@ kaj**gps**.
 
 ### Primary places
 
-* for Google Earth: MyPlaces.kml
-* for kajgps calculations: ge_places.csv (faster format than MyPlaces.kml)
-* for easy editing: ge_places.ods
+* for **Google Earth**: `MyPlaces.kml`
+* for kajgps **calculations**: `ge_places.csv` (faster format than `MyPlaces.kml`)
+* for **easy editing**: `ge_places.ods`
 
 ### Secondary files
-* export into SVG
-* export into GPX
+* export into *SVG* (for display on screen map)
+* export into *HTML* (for display as a table)
+* export into *GPX* (for input into other applications)
 
 ### Discovering improvements to data
 * export routes into KML, to find missing points
@@ -23,28 +24,28 @@ kaj**gps**.
 ## Issues and how to avoid them
 
 1. Commas in placemark descriptions 
-  * cause problems when kajgps reads in ge_places.csv
+  * cause problems when kajgps reads in `ge_places.csv`
   * do not use commas in placemark names and descriptions
   * search for commas either in 
-  * validation: find extra commas in ge_places.csv (assert)
+  * validation: find extra commas in `ge_places.csv` (assert)
 
 2. Ampersands in placemark descriptions
   * caused problems when Google Earth displays KML
-  * now avoided by substituting & with &amp; upon KML creation
+  * now avoided by substituting `&` with `&amp;` upon KML creation
 
 3. Invalid placetypes
   * validation: find missing placetypes upon load
 
 4. Not knowing which data is current
-  * keep ge_places.ods the standard
-  * dump ge_places.ods regularly to KML and csv
+  * keep `ge_places.ods` the standard
+  * dump `ge_places.ods` regularly to KML and csv
 
 ## Usability tips for end user
 
-1. Keep folder hierarchies clean (Europe|Finland|Nagu)  
+1. Keep **folder hierarchies** clean (Europe|Finland|Nagu)  
   * consistency in your own eyes
 
-2. Keep placemark ordering clean
+2. Keep **placemark ordering** clean
   * sort placemarks in the spreadsheet
   * always sort by folder hierarchy
   * within folder hierarchy, sort as you please
@@ -57,6 +58,6 @@ kaj**gps**.
 
 ## Cleaning data
 
-* to clean placetypes: sort the spreadsheet by placetype
-* to clean folders: sort the spreadsheet by lat, lon or folder
-* to clean needlessly long names: sort by name length, move text to description
+* to clean **placetypes**: sort the spreadsheet by placetype
+* to clean **folders**: sort the spreadsheet by lat, lon or folder
+* to clean **needlessly long names**: sort by name length, move text to description
