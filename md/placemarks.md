@@ -53,8 +53,25 @@ kaj**gps**.
 
 ## Entering data
 
+### Entering stray points, character based
+
 * cut and paste lats and lons into corresponding spreadsheet cell
 * remember to put lat before lon (some sources, notably KML, give lon before lat)
+
+### Entering many points, over Google Earth
+
+* create folder in My Places, e.g. Chillingholm
+ * for ease of use, place it appropriately in the hierarchy
+* save My Places (**all** placemarks)
+* save just the new folder into a KML file, e.g. Chillingholm.kml
+* use kaj**gps** to convert KML to CSV
+ * `Places,edit,,Ängsö,,,,,/Users/kaj/Geodata/lib/placemark/kml/angso.kml,/Users/kaj/Geodata/lib/placemark/csv/angso.csv`
+* edit the resulting CSV file into the `ge_places.ods` spreadsheet, using the guidelines in the rest of this document
+ * in particular, give the places the right placetypes
+ * while you're at it, give them appropriate ordering and prominence
+* dump the new 'gold standard' placemarks
+ * into KML form for re-entry into Google Earth, now with appropriate icons (based on placetypes)
+ * into csv form `ge_places.csv` for usage in kaj**gps** (segment naming, calculations, svg maps etc.)
 
 ## Cleaning data
 
