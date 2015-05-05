@@ -72,6 +72,10 @@ kaj**gps**.
 * dump the new 'gold standard' placemarks
  * into KML form for re-entry into Google Earth, now with appropriate icons (based on placetypes)
  * into csv form `ge_places.csv` for usage in kaj**gps** (segment naming, calculations, svg maps etc.)
+ * take care to copy the appropriate new parts
+  * sometimes it's best to partly overwrite old data
+  * sometimes it's better to just enter new data
+  * in both cases, take care to a) not delete placemarks by mistake and b) not enter duplicates 
 
 ## Cleaning data
 
