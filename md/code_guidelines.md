@@ -1,4 +1,4 @@
-# Coding Guidelines for `kaj**gps**.py` 
+# Coding Guidelines for kaj**gps** 
 
 ## Audience: The User
 
@@ -11,8 +11,9 @@ who wish to **submit bugs** or **enhancement requests**.
 
 The following thoughts have guided the configuration and coding style of 
 Green Elk’s adventure mapping software kajgps.py. If you notice **violations** 
-of the style, do alert us. Also, if you think the style is **bad manners**, do 
-alert us. In both cases, assume the coder has good intentions and good will.
+of the style, do alert us. Also, if you think the style itself is **bad 
+manners**, do alert us. In both cases, assume the coder has good intentions 
+and good will.
 
 ## Configuration: Balance **features** against **configuration work**
 * Make things work with minimum configuration (through smart defaults)
