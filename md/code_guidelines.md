@@ -15,8 +15,18 @@ of the style, do alert us. Also, if you think the style itself is **bad
 manners**, do alert us. In both cases, assume the coder has good intentions 
 and good will.
 
-## Configuration: Balance **features** against **configuration work**
+## Usability guidelines
+
+### Configuration: Balance **features** against **configuration work**
 * Make things work with minimum configuration (through smart defaults)
 * Catch configuration errors early
 * Make incomplete configuration work stand out (assert configuration files)
 * Keep the number of configuration files low
+
+### User feedback: Moderately verbose 
+* When saving files, console log the filename and directory, and file size
+* Give some indication of things happening and of remaining response time, 
+such as console logging a text “`14:25 GPX track 34 of 401`”
+* Otherwise, be moderately verbose; if a non-obvious configuration item 
+influences calculations (such as guessing activities based on speeds and 
+durations), indicate the program logic through 
