@@ -120,6 +120,34 @@ def i1000(an_int):
     return "{0:,}".format(an_int).replace(",", ".")
 
 
+def csv_header_instructions(count, item, filename):
+    s1 = """\
+# Saved %s Green Elk %ss on %s
+#   in file named %s
+"""
+    s2 = """\
+# Instructions:
+# - edit in your favourite text editor
+# - alternatively, use a spreadsheet (OOo tested in Excel mode)
+# - sort and edit as desired
+# - save the file again as csv
+# - upon import, empty rows and # comment rows will be ignored
+# - the # and empty row layouting is hence only to give you an overview
+#   of a freshly created csv file
+#
+# On formats:
+# - do retain the first line with field names unchanged (required by program)
+# - UTF8 is to be used; едц should show as aao with ring and dots
+#   (if not, change your editor format or face problems later)
+# - Text fields with commas, double " and single ' quotes will be
+#   "safe quoted", i.e. surrounded by " and the " itself is doubled
+#   (courtesy of Python import csv)
+"""
+    timestamp = "%s, %s" % (fmt.current_date_yymd(),
+                            fmt.current_time_hm())
+    return s1 % (count, item, timestamp, filename), s2
+
+
 class Config(object):
     def __init__(self, item, fields, filename, enumerate_rows=False,
                  dir_=None):
@@ -144,8 +172,8 @@ class Config(object):
         self.field_count = len(self.field_list)
 
         if not os.path.exists(self.filename):
-            print "Config %s missing file %s" % (item, full_filename)
-            return
+            e = "Config %s missing file %s" % (item, full_filename)
+            raise Exception(e)
         self.import_csv()
 
     def __getitem__(self, item):
@@ -171,6 +199,9 @@ class Config(object):
             for field in row:
                 s += str(field) + " "
         return s
+
+    def __len__(self):
+        return len(self.list)
 
     def exists(self, item):
         return self.dict.get(item) is not None
@@ -229,7 +260,7 @@ class Config(object):
         h += html.doc_footer()
         return h
 
-    def import_csv(self):
+    def import_csv(self, verify=False):
         def verify_no_value_is_none():
             for field in self.fields.split():
                 if row.get(field) is None:
@@ -240,7 +271,6 @@ class Config(object):
         full_filename = self.filename
         named_t = namedtuple(self.item, self.fields)
         tuple_instance = named_t(*[''] * self.field_count)
-        #print "import_csv %s" % full_filename
         with open(full_filename) as csvfile:
             reader = csv.DictReader(csvfile)
             for i, row in enumerate(reader):
@@ -250,11 +280,10 @@ class Config(object):
                 index_field = row[self.index_field_name]
                 is_blank = len(first_field.strip()) == 0
                 is_comment = (first_field + " ")[0] == "#"
-                #print("import_csv rowno %s len %s first_field %s index_field %s" %
-                #      (rowno, len(self.list), first_field, index_field))
                 if not (is_blank or is_comment):
                     # noinspection PyProtectedMember
-                    verify_no_value_is_none()
+                    if verify:
+                        verify_no_value_is_none()
                     r = tuple_instance._replace(**row)
                     self.list.append(index_field)
                     self.dict[index_field] = r
@@ -274,7 +303,7 @@ class Config(object):
         with open(filename, 'w') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=self.fields.split())
             writer.writeheader()
-            h1, h2 = self.csv_header_instructions()
+            h1, h2 = self._csv_header_instructions()
             csvfile.write("\n%s\n%s\n" % (h1, h2))
             use_subheads = subhead_field is not None
             prev_subhead = subhead = ""
@@ -287,35 +316,13 @@ class Config(object):
                 writer.writerow(r)
                 prev_subhead = subhead
 
-    def csv_header_instructions(self):
-        s1 = """\
-# Saved %s Green Elk %ss on %s
-#   in file named %s
-"""
-        s2 = """\
-# Instructions:
-# - edit in your favourite text editor
-# - alternatively, use a spreadsheet (OOo tested in Excel mode)
-# - sort and edit as desired
-# - save the file again as csv
-# - upon import, empty rows and # comment rows will be ignored
-# - the # and empty row layouting is hence only to give you an overview
-#   of a freshly created csv file
-#
-# On formats:
-# - do retain the first line with field names unchanged (required by program)
-# - UTF8 is to be used; едц should show as aao with ring and dots
-#   (if not, change your editor format or face problems later)
-# - Text fields with commas, double " and single ' quotes will be
-#   "safe quoted", i.e. surrounded by " and the " itself is doubled
-#   (courtesy of Python import csv)
-"""
-        count = len(self.list)
-        return s1 % (count, self.item, self.timestamp, self.filename), s2
+    def _csv_header_instructions(self):
+        return csv_header_instructions(len(self.list), self.item,
+                                       self.filename)
 
 
 class Userbug(object):
-    def __init__(self, name):
+    def __init__(self, name, verbose=True):
         self.name = name
         self.bug_count = 0
         self.list = []
@@ -336,3 +343,4 @@ class Userbug(object):
     def add(self, text):
         self.list.append(text)
         self.bug_count += 1
+        print "Userbug added: %s" % text

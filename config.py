@@ -5,26 +5,10 @@
 
 dir = dict(
     # Main configuration files
-    config_file_dir='/Users/kaj/Code/kajgps/config',
-    user_photo_src_dir='/Volumes/LaCie/kaj/Bilder/rep',
-    user_file_src_dir='/Users/kaj/Geodata/src',
-    user_file_pub_dir='/Users/kaj/Geodata/pub',
-
-    # Mid-directory name -- ge_2015-03-10_1433
-    output_dir='ge_%s_%s',
+    config_file_dir='~/Code/kajgps/config',
 )
 
 config = dict(
-
-    # Old / former configuration files
-    tracks_file='/Users/kaj/Code/kajgps/config/tracks.kajgps',
-    # Basic defaults for placetypes et al.
-    places_file='/Users/kaj/Code/kajgps/config/ge_places.csv',
-    #places_file='/Users/kaj/Code/kajgps/config/Kaj_Places.kml',
-    #places_file='/Users/kaj/Geodata/lib/placemark/csv/wolkenstein-2015.csv',
-    #places_file='/Users/kaj/Geodata/lib/placemark/csv/nagu.csv',
-    # Placemarks (points with names and types) used for naming start/stop/break points; large file => long response time
-    # placemarks_file = '/Users/kaj/Code/kajgps/settings/kaj_places.kajgps',
 
     # Directories to start scanning from
     track_base_dir='/Users/kaj/Geodata/src/2014',

@@ -128,6 +128,23 @@ def lon_diff2km(lon_diff, lat):
     return lon_diff * sin(radians(90 - lat)) * 10000 / 90
 
 
+def calc_nwse(tp_list):
+    max_lat = -90
+    max_lon = -180
+    min_lat = 90
+    min_lon = 180
+    for tp in tp_list:
+        max_lat = max(max_lat, tp.lat)
+        max_lon = max(max_lon, tp.lon)
+        min_lat = min(min_lat, tp.lat)
+        min_lon = min(min_lon, tp.lon)
+    mid_lat = (max_lat + min_lat) / 2
+    mid_lon = (max_lon + min_lon) / 2
+    return {'min': {'lat': min_lat, 'lon': min_lon},
+            'max': {'lat': max_lat, 'lon': max_lon},
+            'mid': {'lat': mid_lat, 'lon': mid_lon}}
+
+
 class KML(object):
     """Output class for KML"""
 
