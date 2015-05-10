@@ -293,8 +293,6 @@ class Config(object):
         msg = []
         for i, entry in enumerate(self.list):
             row = self.dict[entry]
-            #print row
-            #print "missing_fields %s " % str(row)
             for field in self.fields.split():
                 if getattr(row, field) is None:
                     count += 1
@@ -302,6 +300,22 @@ class Config(object):
                     text = "Item %s (%s): Field %s is None"
                     text %= (i, first_field, field)
                     msg.append(text)
+        return count, msg
+
+    def duplicates(self):
+        count = 0
+        msg = []
+        self.list.sort()
+        prev_first_field = ""
+        for i, entry in enumerate(self.list):
+            row = self.dict[entry]
+            first_field = getattr(row, self.first_field_name)
+            if first_field == prev_first_field:
+                count += 1
+                text = "Item %s (%s): Row is duplicate"
+                text %= (i, first_field)
+                msg.append(text)
+            prev_first_field = first_field
         return count, msg
 
     def integrity(self, field, other_table):

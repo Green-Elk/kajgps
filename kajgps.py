@@ -353,7 +353,7 @@ class Placetypes(lib.Config):
 
     @staticmethod
     def _svg_src(svg_icon):
-        return _ICON_DIR % svg_icon
+        return "file://" + os.path.join(_icon_dir, svg_icon)
 
     def img(self, placetype, size=40):
         return self.img_url(placetype.url, size)
@@ -2501,7 +2501,6 @@ class Track(object):
         # - window_dist_m = 20
         # - final_hop_m = 1
         # - minimum_break_s = 120
-        #activity_id = config.config['activity_id']
         activity_id = self.activity_id
         activity = _activities[activity_id]
         invalid_activity = isinstance(activity, str)
@@ -3842,6 +3841,64 @@ class Command(object):
         #    f.write(log_content)
 
     def check_status(self, verbose=False):
+
+        def check_missing_fields():
+            count, text_rows = table.missing_fields()
+            if count > 0:
+                print("  - Error! %s entries with missing fields" % count)
+                if count > 5:
+                    print("    (only first 5 shown)")
+                for i, row in enumerate(text_rows):
+                    if i == 5:
+                        break
+                    print("    %s" % row)
+
+        def check_duplicates():
+            if table.enumerate_rows:
+                return  # For such tables, duplicates are allowed
+            count, text_rows = table.duplicates()
+            if count > 0:
+                print("  - Error! %s entries with duplicates" % count)
+                if count > 500:
+                    print("    (only first 5 shown)")
+                for i, row in enumerate(text_rows):
+                    if i == 500:
+                        break
+                    print("    %s" % row)
+
+        def check_placetype_integrity():
+            count, text_rows = table.integrity('placetype_id', placetypes)
+            other_table_name = placetypes.filename
+
+            if count > 0:
+                e = "  - Error! %s entries referring to placetype_id"
+                e += " not present in\n    file '%s'\n"
+                e += "    => add missing entries there, or rename "
+                e += "erroneous placetype_id values"
+                print(e % (count, other_table_name))
+                if count > 5:
+                    print("    (only first 5 shown)")
+                for i, row in enumerate(text_rows):
+                    if i == 5:
+                        break
+                    print("    %s" % row)
+
+        def check_placetype_svg_files():
+                j = 0
+                for i, pt in enumerate(placetypes):
+                    filename = os.path.join(_icon_dir, pt.svg)
+                    if pt.svg == "":
+                        continue
+                    exists = os.path.isfile(filename)
+                    if not exists:
+                        j += 1
+                        if j > 5:
+                            print "(only first five shown)"
+                            break
+                        e = "Placetype %s (%s)" % (i, pt.id)
+                        e += " has missing svg file %s" % filename
+                        print("    %s" % e)
+
         if verbose:
             print("kajgps.py: Check status %s\n" % fmt.current_timestamp())
             config_py = sys.argv[0]
@@ -3876,36 +3933,20 @@ class Command(object):
                 is_file = os.path.isfile(full_filename)
                 if not is_file:
                     msg = "Error! %s does not exist" % full_filename
-                else:
-                    table = lib.Config(**config_files[table_name])
-                    msg = "%s rows" % len(table)
+                    print("- %s (%s): %s" % (table_name, filename, msg))
+                    continue
+                enumerate_rows = table_name in ['Commands', 'Time_metadata']
+                table = lib.Config(enumerate_rows=enumerate_rows,
+                                   **config_files[table_name])
+                msg = "%s rows" % len(table)
                 print("- %s (%s): %s" % (table_name, filename, msg))
-                count, text_rows = table.missing_fields()
-                if count > 0:
-                    print("  - Error! %s entries with missing fields" % count)
-                    if count > 5:
-                        print("    (only first 5 shown)")
-                    for i, row in enumerate(text_rows):
-                        if i == 5:
-                            break
-                        print("    %s" % row)
+                check_missing_fields()
+                check_duplicates()
                 if table_name == 'Places':
-                    count, text_rows = table.integrity('placetype_id',
-                                                       placetypes)
-                    other_table_name = placetypes.filename
+                    check_placetype_integrity()
+                if table_name == 'Placetype':
+                    check_placetype_svg_files()
 
-                    if count > 0:
-                        e = "  - Error! %s entries referring to placetype_id"
-                        e += " not present in\n    file '%s'\n"
-                        e += "    => add missing entries there, or rename "
-                        e += "erroneous placetype_id values"
-                        print(e % (count, other_table_name))
-                        if count > 5:
-                            print("    (only first 5 shown)")
-                        for i, row in enumerate(text_rows):
-                            if i == 5:
-                                break
-                            print("    %s" % row)
         print("")
 
     @staticmethod
@@ -4012,6 +4053,7 @@ config_files = {
 }
 
 _config_file_dir = os.path.expanduser(config.dir['config_file_dir'])
+_icon_dir = os.path.expanduser(config.dir['icon_dir'])
 
 for conf in config_files:
     config_files[conf]['dir_'] = _config_file_dir
@@ -4033,7 +4075,6 @@ for areaname in _areanames:
     _area_places.pm_list.append(Placemark(areaname.placemark,
                                           areaname.lat, areaname.lon))
 _forcedbreaks = lib.Config(**config_files['Forcedbreak'])
-_ICON_DIR = "file:///Users/kaj/Documents/py/svg/allt/%s"  # todo MOVE
 _svg_icon_file = os.path.join(_config_file_dir, csv_filename['svg_icons'])
 
 colors = lib.Config(**config_files['Colors'])
@@ -4057,4 +4098,9 @@ else:
             datetime.datetime.now().strftime("%H:%M:%S"), lib.response_time()))
     if userbug.bug_count > 0:
         print("User bug count %s" % userbug.bug_count)
-        lib.save_as('/Users/kaj/Geodata/pub/userbugs.txt', repr(userbug), True)
+        log_dir = os.path.dirname(os.path.realpath(sys.argv[0]))
+        log_dir = os.path.join(log_dir, 'log')
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+        filename = os.path.join(log_dir, 'userbugs.txt')
+        lib.save_as(filename, repr(userbug), True)
