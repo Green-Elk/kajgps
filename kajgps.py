@@ -3865,12 +3865,13 @@ class Command(object):
                       ['Places', 'Areaname', 'Day_metadata', 'Time_metadata']],
                  ['3. Base data (change seldom if ever)',
                       ['Activity', 'Colors', 'Placetype']]]
+        placetypes = Placetypes(**config_files['Placetype'])
         for category in files:
             print("\n%s" % category[0])
             for table_name in category[1]:
                 values = config_files[table_name]
                 filename = values['filename']
-                dir_ = values['dir_']
+                dir_ = str(values['dir_'])
                 full_filename = os.path.join(dir_, filename)
                 is_file = os.path.isfile(full_filename)
                 if not is_file:
@@ -3879,7 +3880,32 @@ class Command(object):
                     table = lib.Config(**config_files[table_name])
                     msg = "%s rows" % len(table)
                 print("- %s (%s): %s" % (table_name, filename, msg))
+                count, text_rows = table.missing_fields()
+                if count > 0:
+                    print("  - Error! %s entries with missing fields" % count)
+                    if count > 5:
+                        print("    (only first 5 shown)")
+                    for i, row in enumerate(text_rows):
+                        if i == 5:
+                            break
+                        print("    %s" % row)
+                if table_name == 'Places':
+                    count, text_rows = table.integrity('placetype_id',
+                                                       placetypes)
+                    other_table_name = placetypes.filename
 
+                    if count > 0:
+                        e = "  - Error! %s entries referring to placetype_id"
+                        e += " not present in\n    file '%s'\n"
+                        e += "    => add missing entries there, or rename "
+                        e += "erroneous placetype_id values"
+                        print(e % (count, other_table_name))
+                        if count > 5:
+                            print("    (only first 5 shown)")
+                        for i, row in enumerate(text_rows):
+                            if i == 5:
+                                break
+                            print("    %s" % row)
         print("")
 
     @staticmethod

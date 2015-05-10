@@ -288,6 +288,37 @@ class Config(object):
                     self.list.append(index_field)
                     self.dict[index_field] = r
 
+    def missing_fields(self):
+        count = 0
+        msg = []
+        for i, entry in enumerate(self.list):
+            row = self.dict[entry]
+            #print row
+            #print "missing_fields %s " % str(row)
+            for field in self.fields.split():
+                if getattr(row, field) is None:
+                    count += 1
+                    first_field = getattr(row, self.first_field_name)
+                    text = "Item %s (%s): Field %s is None"
+                    text %= (i, first_field, field)
+                    msg.append(text)
+        return count, msg
+
+    def integrity(self, field, other_table):
+        count = 0
+        msg = []
+        for i, entry in enumerate(self.list):
+            row = self.dict[entry]
+            value = getattr(row, field)
+            other_value = other_table[value]
+            if other_value is "":
+                count += 1
+                first_field = getattr(row, self.first_field_name)
+                text = "Item %s (%s): %s %s is missing"
+                text %= (i, first_field, field, value)
+                msg.append(text)
+        return count, msg
+
     def save_as(self, filename, subhead_field=None,
                 field_transformations=None):
         file_format = filename.split(".")[-1]
