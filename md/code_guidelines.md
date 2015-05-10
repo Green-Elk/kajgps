@@ -54,12 +54,13 @@ durations), indicate the program logic through a descriptive comment
 ## Usability guidelines: Internationalisation
 
 ### User data formatting: Meet most expectations, but not all
-* Use **km** for storing distances; allow output in miles 
-* Use **km/h** for storing speeds; allow output in mph
-* Use **m** for storing elevations and altitudes; allow output in feet
-* Format km and km/h with **one decimal**, and use comma as decimal separator
-* Format miles and mph with one decimal, and use point as decimal separator 
-* Format m and ft as **integers**
+* Use **km** for storing distances; perhaps later allow output in miles 
+* Use **km/h** for storing speeds; perhaps later allow output in mph
+* Use **m** for storing elevations and altitudes; perhaps later allow output 
+in feet
+* Format distance and speed with **one decimal**, and use comma as decimal 
+separator
+* Format altitude as **integers**
 * Use **d.m.yy** when merely displaying dates, and **yy-m-d** when displaying 
 a date influences ordering
 * Use the **24h** clock
@@ -74,7 +75,8 @@ shortened to three chars)
 * The excuse in some cases is “**do your own visualisation layer**”; for UIs, 
 there are widgets in particular for dates and times, where the text output 
 isn’t used at all
-* Decimal points (as opposed to commas) only used with miles, not km
+* Decimal points (as opposed to commas) only used once miles are implemented, 
+whereas km use decimal commas
 * No usage of mdy dates
 * No usage of 12h clock
 * No usage of knots
