@@ -221,7 +221,7 @@ class KML(object):
 
     @staticmethod
     def point_header_footer(coordinates, icon_url, label_scale=0.5,
-                            icon_scale=1, label_color="FFFFFFFF"):
+                            icon_scale=0.5, label_color="FFFFFFFF"):
         h = """<Style><LabelStyle><scale>%s</scale></LabelStyle>
      <IconStyle><color>%s</color><scale>%s</scale>
        <Icon><href>%s</href></Icon></IconStyle></Style>
