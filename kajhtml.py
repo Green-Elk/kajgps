@@ -33,6 +33,10 @@ def thr(text):
     h = '<th align="right">%s</th>' % text
     return h
 
+def red(text):
+    h = HTML.span(text, "red")
+    return h
+
 
 class HTML(object):
     def __init__(self, col_count=5, header_font="Open Sans",
@@ -58,7 +62,7 @@ class HTML(object):
         url = '<a href="http://%s">%s</a>' % (url, url)
         self.stamp = 'GPL code by %s, the Outdoor Sports Community' % url
         self.stamp = self.span(self.stamp, "ge_green")
-        subhead = start_date_time
+        subhead = self.desc # Was: start_date_time
         h1 = self.span(self.title, "ge_green")
         # noinspection PyPep8
         style = """\

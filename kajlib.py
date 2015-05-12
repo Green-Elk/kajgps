@@ -22,6 +22,7 @@ from kajhtml import td, tdr, th, thr
 
 def start_log(debug_object, text=""):
     now = datetime.datetime.now()
+    print("start_log %s" % now)
     global _log, _debug_object
     _debug_object = debug_object
     _log = {'stack': [], 'object': _debug_object, 'text': text,
@@ -33,6 +34,7 @@ def log_event(text, count=None, decorated=False):
     if decorated and _log.get('object') != _debug_object:
         return
     current = datetime.datetime.now()
+    print("log_event %s" % current)
     delta = current - _log['last_time']
     count_text = " (%s)" % count if count is not None else ""
     _log['last_time'] = current
@@ -40,6 +42,8 @@ def log_event(text, count=None, decorated=False):
 
 
 def response_time():
+    log_event("End")
+    print "from %s to %s" % (_log['start_time'], _log['last_time'])
     return str(_log['last_time'] - _log['start_time'])
 
 
@@ -376,13 +380,13 @@ class Userbug(object):
 
     def __str__(self):
         s = "Userbug('%s'): %s items"
-        s += " start: %s"
+        s += " start: %s\n"
         return s % (self.name, len(self.list), self.timestamp)
 
     def __repr__(self):
         s = str(self)
         for row in self.list:
-            s += "\n %s" % row
+            s += " %s" % row
         return s
 
     def add(self, text):
