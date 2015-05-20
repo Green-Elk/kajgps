@@ -377,6 +377,10 @@ class Places(object):
         create_empty_collection = infile is None
         if create_empty_collection:
             return
+        copy_other_collection = infile == "copy"
+        if copy_other_collection:
+            self._copy()
+            return
         file_exists = os.path.isfile(infile)
         if not file_exists:
             raise Exception("class Places __init__: File %s not found " %
@@ -492,6 +496,22 @@ class Places(object):
 
     def add(self, pm):  # Add an individual Placemark object
         self.pm_list.append(pm)
+
+    def _copy(self):
+        original = self.kwargs.get('original')
+        forced_breaks = self.kwargs.get('forced_breaks')
+        p1 = self.kwargs.get('p1')
+        p2 = self.kwargs.get('p2')
+
+        if original is not None:
+            for pm in original:
+                if pm.inside(p1, p2):
+                    self.add(pm)
+        elif forced_breaks is not None:
+            for fb in forced_breaks:
+                pm = Placemark(fb.text, fb.lat, fb.lon)
+                if pm.inside(p1, p2):
+                    self.add(fb)
 
     def as_kml(self, with_descr=False):  # Places as kml
         k = kml.doc_header(self.filename)
@@ -636,7 +656,9 @@ class Places(object):
     def closest_placemark(self, point):
         dist = 99999
         if self.count() == 0:
-            raise Exception("closest_placemark: 0 placemarks to compute from.")
+            empty = Placemark("-", -point.lat, (180+point.lon))
+            return empty
+            #raise Exception("closest_placemark: 0 placemarks to compute from.")
         closest_pm = self.pm_list[0]
         for pm in self.pm_list:
             if pm.dynamic:
@@ -825,50 +847,81 @@ class Tracklist(object):
         elif file_format == 'svg':
             a_str = self.as_svg()
         else:
-            if os.path.isdir(filename):
-                for track_dict in self.tracks:
-                    track = track_dict['track']
-                    track.save_as_csv_files(outdir=self.kwargs['outfile'])
-                self._save_seg_dicts_as_csv(dir_=filename)
+            create_cache = self.mode == "cache"
+            if create_cache:
+                if not os.path.exists(filename):
+                    os.makedirs(filename)
+                self.save_as_trackcache(dir_=filename)
                 return
             else:
                 raise Exception("Tracklist.save_as unknown format %s" %
                             str(file_format))
         lib.save_as(filename, a_str, verbose=True)
 
-    def _save_seg_dicts_as_csv(self, dir_):
-        clean = []
-        [clean.append(seg) for seg in self.seg_dicts if seg not in clean]
-        self.seg_dicts = clean
+    def save_as_trackcache(self, dir_):
+        i = j = dirs = overwrites = 0
+        for track_dict in self.tracks:
+            track = track_dict['track']
 
-        fields = ('date time_start time_stop activity_id distance duration ' +
-                  'speed count hm_up hm_down start_dist name ' +
-                  'max_lat min_lat max_lon min_lon').split()
+            fieldnames = ['date', 'time', 'lat', 'lon', 'alt', 'text']
+            for seg in track.compressed.segments:
+                i += 1
+                full_dir = os.path.join(dir_, seg.activity_id)
+                if not os.path.exists(full_dir):
+                    os.makedirs(full_dir)
+                    dirs += 1
+                filename = Segment.csv_filename(seg.as_dict())
+                filename = os.path.join(full_dir, filename)
+                if os.path.exists(filename):
+                    print("- File %s exists, is being overwritten" % filename)
+                    overwrites += 1
+                with open(filename, 'w') as csvfile:
+                    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                    writer.writeheader()
+                    seg_dict = {'date': seg.first['tp'].date_yymd(),
+                                'time_start': seg.first['tp'].time_hms(),
+                                'time_stop': seg.last['tp'].time_hms(),
+                                'activity_id': seg.activity_id,
+                                'distance': fmt.onedecimal(seg.distance),
+                                'duration': seg.duration_hms(),
+                                'speed': fmt.onedecimal(seg.speed()),
+                                'hm_up': seg.hm_up,
+                                'hm_down': seg.hm_down,
+                                'start_dist': fmt.onedecimal(
+                                    seg.first['dist']),
+                                'name': seg.name(),
+                                'infile': self.kwargs['infile'],
+                                'max_lat': seg.map_area['max']['lat'],
+                                'min_lat': seg.map_area['min']['lat'],
+                                'max_lon': seg.map_area['max']['lon'],
+                                'min_lon': seg.map_area['min']['lon'],
+                                'count': fmt.i1000(len(seg)),
+                                }
+                    track.diary.seg_dicts.append(seg_dict)
+                    h1, h2 = Segment.csv_header_instructions(filename,
+                                                             seg_dict)
+                    csvfile.write("\n%s\n%s\n" % (h1, h2))
+                    for trackpoint in seg:
+                        writer.writerow(trackpoint.as_dict())
+        print("Saved %s points in %s csv files; %s overwritten, %s new dirs" %
+              (j, i, overwrites, dirs))
+
         filename = os.path.join(dir_, 'ge_segments.csv')
-        with open(filename, 'w') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=fields, delimiter=";")
-            writer.writeheader()
-            date = fmt.current_date_yymd()
-            time = fmt.current_time_hm()
-            csvfile.write("\n# %s %s\n" % (date, time))
-            csvfile.write("\n# %s\n# %s\n\n" % (self.track_base_dir,
-                                              self.header))
-            for seg_dict in self.seg_dicts:
-                for field in ['max_lat', 'min_lat', 'max_lon', 'min_lon']:
-                    seg_dict[field] = "{:.5f}".format(seg_dict[field])
-                seg_dict = {pick: seg_dict[pick] for pick in fields}
-                writer.writerow(seg_dict)
-            print("Segment metadata saved on file %s" % filename)
+        comment = self.track_base_dir
+        Segment.save_as_csv(filename, self.seg_dicts, comment)
 
     @logged
     def save_as_csv(self, filename):
         skim_fields = 'date activity_id timezone name distance lat lon comment'
         diary_fields = ('hm_to_hm activity_id name area a_dist_fmt ' +
                        'dist_fmt duration_hm speed_fmt')
+        placemark_fields = 'lat lon alt placetype_id prominence placemark'
+
         seg_fields = 'date hm_to_hm name distance duration speed'
         time_fields = 'date time activity_id comment'.split()
         fields = (skim_fields if self.mode == "skim" else
-                  diary_fields if self.mode == "diary" else seg_fields)
+                  diary_fields if self.mode == "diary" else
+                  placemark_fields if self.mode == "missing" else seg_fields)
         fields = fields.split()
 
         if self.mode in ['skim', 'diary', 'segments']:
@@ -929,8 +982,26 @@ class Tracklist(object):
                     prev_date = date
 
                 print("%s rows saved into file %s" % (i, filename))
-                csvfile.write("\n\nResponse time: " + lib.response_time())
-                csvfile.write("\n\nLog: " + lib.log_rpt())
+                csvfile.write("\n\n# Response time: " + lib.response_time())
+                csvfile.write("\n\n# Log: " + lib.log_rpt())
+
+        if self.mode in ['missing']:
+            with open(filename, 'w') as csvfile:
+                writer = csv.DictWriter(csvfile, fieldnames=fields)
+                writer.writeheader()
+                h2 = "Dynamic placemarks dir %s (%s track files)" % (
+                    self.track_base_dir, len(self.tracks))
+                csvfile.write("\n# %s\n\n# %s\n" % (self.header, h2))
+                i = 0
+                for pm in self.missing_placemarks:
+                    row = {'lat': pm.lat_5(), 'lon': pm.lon_5(),
+                           'alt': int(pm.alt), 'placetype_id': pm.placetype_id,
+                           'placemark': pm.text, 'prominence': pm.prominence}
+                    writer.writerow(row)
+                    i += 1
+                print("%s rows saved into file %s" % (i, filename))
+                csvfile.write("\n\n# Response time: " + lib.response_time())
+                csvfile.write("\n\n# Log: " + lib.log_rpt())
 
     @staticmethod
     def _has_date_entry(date):
@@ -966,26 +1037,6 @@ class Tracklist(object):
         if Tracklist._has_date_entry(date):
             return _day_metadata[date].timezone
         return "? 60"
-
-    @logged
-    def save_dynamic_placemarks_as_csv(self, filename):
-        fields = 'lat lon alt placetype_id prominence placemark'.split()
-        i = 0
-        with open(filename, 'w') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=fields)
-            writer.writeheader()
-            h2 = "Dynamic placemarks dir %s (%s track files)" % (
-                self.track_base_dir, len(self.tracks))
-            csvfile.write("\n# %s\n\n# %s\n" % (self.header, h2))
-            for pm in self.missing_placemarks:
-                row = {'lat': pm.lat_5(), 'lon': pm.lon_5(),
-                       'alt': int(pm.alt), 'placetype_id': pm.placetype_id,
-                       'placemark': pm.text, 'prominence': pm.prominence}
-                writer.writerow(row)
-                i += 1
-            print("%s rows saved into file %s" % (i, filename))
-            csvfile.write("\n\n# Response time: " + lib.response_time())
-            csvfile.write("\n\n# Log: " + lib.log_rpt())
 
     @logged
     def as_kml(self):
@@ -1219,12 +1270,16 @@ class TrackCache(object):
             self.save_as_csv()
             return
 
-        self.fixed = {'mid_lat': float(self.kwargs['lat']),
-                      'mid_lon': float(self.kwargs['lon']),
-                      'width_km': float(self.kwargs['km']),
-                      'orientation': self.kwargs['mode']}
-        self.svg_map = SVGMap(svg, fixed=self.fixed, icon=self.activity_id)
-        self.canvas_area = self.svg_map.svg.canvas['inner']
+        self.load_all_tracks = self.kwargs['km'] == ""
+        if not self.load_all_tracks:
+            self.fixed = {'mid_lat': float(self.kwargs['lat']),
+                          'mid_lon': float(self.kwargs['lon']),
+                          'width_km': float(self.kwargs['km']),
+                          'orientation': self.kwargs['mode']}
+            self.svg_map = SVGMap(svg, fixed=self.fixed, icon=self.activity_id)
+            self.canvas_area = self.svg_map.svg.canvas['inner']
+        else:
+            self.canvas_area = {}
 
         self._load_tracks(self.canvas_area)
         self._sort_tracks()
@@ -1249,7 +1304,7 @@ class TrackCache(object):
                             e += "Mandatory fields: %s" % " ".join(self.fields)
                             raise Exception(e)
                         seg_dict[field] = value
-                    self.make_numeric(seg_dict)
+                    Segment.make_numeric(seg_dict)
                     self.cache.append(seg_dict)
 
     @logged
@@ -1279,21 +1334,26 @@ class TrackCache(object):
                "{activity_id} > {new_activity} as {reason}")
         i = 0
         for seg_dict in self.cache:
-            Segment._guess_activity(seg_dict)
-            row_changed = seg_dict['new_activity'] != seg_dict['activity_id']
+            Segment.guess_activity(seg_dict)
+            old_activity = seg_dict['activity_id']
+            new_activity = seg_dict['new_activity']
+            row_changed = new_activity != old_activity
             if row_changed:
                 i += 1
-                filename = self._csv_filename(seg_dict)
-                mv_from = os.path.join(self.dir_, seg_dict['activity_id'],
-                                       filename)
-                to_dir = os.path.join(self.dir_, seg_dict['new_activity'])
-                mv_to = os.path.join(to_dir, filename)
-                if not os.path.exists(to_dir):
-                    os.makedirs(to_dir)
-                os.rename(mv_from, mv_to)
+                filename = Segment.csv_filename(seg_dict)
+                mv_from = os.path.join(self.dir_, old_activity, filename)
+                delete_it = new_activity == "skip"
+                if delete_it:
+                    os.remove(mv_from)
+                else:
+                    to_dir = os.path.join(self.dir_, new_activity)
+                    mv_to = os.path.join(to_dir, filename)
+                    if not os.path.exists(to_dir):
+                        os.makedirs(to_dir)
+                    os.rename(mv_from, mv_to)
                 print(row.format(**seg_dict))
-            self._revert_numeric(seg_dict)
-            self._clean_before_save(seg_dict)
+            Segment.revert_numeric(seg_dict)
+            Segment.clean_before_save(seg_dict)
         print("adjust_activity: A total of %s rows changed" % i)
 
     def save_as_csv(self):
@@ -1527,14 +1587,17 @@ class TrackCache(object):
         c = len(self.cache)
         j = 0
         for i, seg_dict in enumerate(self.cache):
-            filename = self._csv_filename(seg_dict)
+            filename = Segment.csv_filename(seg_dict)
             activity_id = seg_dict['activity_id']
             filename = os.path.join(self.dir_, activity_id, filename)
-            lat1_ok = (seg_dict['max_lat'] > canvas_area['lat']['bottom'])
-            lat2_ok = (seg_dict['min_lat'] < canvas_area['lat']['top'])
-            lon1_ok = (seg_dict['max_lon'] > canvas_area['lon']['left'])
-            lon2_ok = (seg_dict['min_lon'] < canvas_area['lon']['right'])
-            within_map = lat1_ok and lat2_ok and lon1_ok and lon2_ok
+            if self.load_all_tracks:
+                within_map = True
+            else:
+                lat1_ok = (seg_dict['max_lat'] > canvas_area['lat']['bottom'])
+                lat2_ok = (seg_dict['min_lat'] < canvas_area['lat']['top'])
+                lon1_ok = (seg_dict['max_lon'] > canvas_area['lon']['left'])
+                lon2_ok = (seg_dict['min_lon'] < canvas_area['lon']['right'])
+                within_map = lat1_ok and lat2_ok and lon1_ok and lon2_ok
             if within_map:
                 track = Track(filename, activity_id=activity_id, mode="read",
                               main_activity_id=self.activity_id,
@@ -1621,46 +1684,11 @@ class TrackCache(object):
         k += kml.doc_footer()
         return k
 
-    @staticmethod
-    def make_numeric(seg_dict):
-        # lots of trouble because no pythonic way for decimal commas
-        seg_dict['speed_fmt'] = seg_dict['speed']
-        seg_dict['distance_fmt'] = seg_dict['distance']
-        seg_dict['speed'] = float(seg_dict['speed'].replace(",", "."))
-        seg_dict['distance'] = float(seg_dict['distance'].replace(",", "."))
-        seg_dict['hm_up'] = int(seg_dict['hm_up'])
-        seg_dict['hm_down'] = int(seg_dict['hm_down'])
-        seg_dict['count'] = int(seg_dict['count'])
-        seg_dict['min_lat'] = float(seg_dict['min_lat'])
-        seg_dict['max_lat'] = float(seg_dict['max_lat'])
-        seg_dict['min_lon'] = float(seg_dict['min_lon'])
-        seg_dict['max_lon'] = float(seg_dict['max_lon'])
-
-    @staticmethod
-    def _revert_numeric(seg_dict):
-        seg_dict['speed'] = seg_dict['speed_fmt']
-        seg_dict['distance'] = seg_dict['distance_fmt']
-        seg_dict.pop('speed_fmt', None)
-        seg_dict.pop('distance_fmt', None)
-
-    @staticmethod
-    def _clean_before_save(seg_dict):
-        seg_dict['activity_id'] = seg_dict['new_activity']
-        seg_dict.pop('new_activity', None)
-        seg_dict.pop('reason', None)
-
-    @staticmethod
-    def _csv_filename(seg_dict):
-        d = fmt.yymd(fmt.datetime_from_dmy(seg_dict['date']))
-        h1 = seg_dict['time_start']
-        h2 = seg_dict['time_stop']
-        return ("%s_%s-%s.csv" % (d, h1, h2)).replace(":", "")
-
 
 class Segment(object):
     """Stretch of a track, separated by breaks"""
 
-    def __init__(self, track, i_first_tp, i_last_tp, activity_id):
+    def __init__(self, track, i_first_tp, i_last_tp, activity_id, type):
         self.track = track
         self.i_first_tp = i_first_tp
         self.i_last_tp = i_last_tp
@@ -1668,12 +1696,21 @@ class Segment(object):
         self.previous_segment = None
         self.next_segment = None
         self.activity_id = activity_id
+        self.order = _activities[activity_id].order
+        self.type = type
         self.map_area = geo.calc_nwse(self)
-        self.first = {}
-        self.last = {}
+        self.first = self._calc_tp_pm(i_first_tp)
+        self.last = self._calc_tp_pm(i_last_tp)
         self.stats = {}
         self.break_ = {}
-        self.calc()
+        self.calc_distance_duration()
+        self.parse_segment_for_peaks()
+
+        if self.track.diary is not None:
+            if self.track.diary.kwargs['parameters'] == "missing":
+                if self.first['dist'] > 0.05:
+                    # Over 50 metres from existing Placemark
+                    self._create_missing_start_placemark()
 
     def __str__(self):
         break_dur = self.break_duration_hm()
@@ -1706,7 +1743,7 @@ class Segment(object):
         direction = "up" if alt_diff > 0 else "down"
         alt_diff = ("v %s m" % abs(alt_diff) if direction == "down" else
                     "^ %s m" % alt_diff)
-        return {'date': self.first['tp'].datetime.date(),
+        return {'date': self.first['tp'].date_yymd(),
                 'time_start': self.first['tp'].time_hms(),
                 'time_stop': self.last['tp'].time_hms(),
                 'hm_to_hm': self.hm_to_hm(), 'name': self.name(),
@@ -1724,6 +1761,29 @@ class Segment(object):
                 'start_datetime': self.first['tp'].datetime,
                 'end_datetime': self.last['tp'].datetime}
 
+    @staticmethod
+    def save_as_csv(filename, seg_dicts, comment):
+        clean = []
+        [clean.append(seg) for seg in seg_dicts if seg not in clean]
+        seg_dicts = clean
+
+        fields = ('date time_start time_stop activity_id distance duration ' +
+                  'speed count hm_up hm_down start_dist name ' +
+                  'max_lat min_lat max_lon min_lon').split()
+        with open(filename, 'w') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=fields, delimiter=";")
+            writer.writeheader()
+            date = fmt.current_date_yymd()
+            time = fmt.current_time_hm()
+            csvfile.write("\n# %s %s\n" % (date, time))
+            csvfile.write("\n# %s\n\n" % comment)
+            for seg_dict in seg_dicts:
+                for field in ['max_lat', 'min_lat', 'max_lon', 'min_lon']:
+                    seg_dict[field] = "{:.5f}".format(seg_dict[field])
+                seg_dict = {pick: seg_dict[pick] for pick in fields}
+                writer.writerow(seg_dict)
+            print("Segment metadata saved on file %s" % filename)
+
     def name(self):
         if self.first['name'] == self.last['name']:
             return self.first['name']
@@ -1736,34 +1796,84 @@ class Segment(object):
     def set_next(self, next_segment):
         self.next_segment = next_segment
 
-    def calc(self):
-        self.first['tp'] = self.track.trackpoints[self.i_first_tp]
-        self.first['pm'] = _places.closest_placemark(self.first['tp'])
-        self.first['dist'] = self.first['pm'].distance(self.first['tp'])
-        self.first['date_fmt'] = self.first['tp'].date_dmyy()
-        self.first['time'] = self.first['tp'].time_hm()
-        self.first['name'] = self.first['pm'].text
+    def recalc(self):
+        self.first = self._calc_tp_pm(self.i_first_tp)
+        self.last = self._calc_tp_pm(self.i_last_tp)
+        self.type = "recalc"
+        self.calc_distance_duration()
 
-        self.last['tp'] = self.track.trackpoints[self.i_last_tp]
-        self.last['pm'] = _places.closest_placemark(self.last['tp'])
-        self.last['dist'] = self.last['pm'].distance(self.last['tp'])
-        self.last['date'] = self.last['tp'].date_dmyy()
-        self.last['time'] = self.last['tp'].time_hm()
-        self.last['name'] = self.last['pm'].text
+    def _calc_tp_pm(self, i_tp):
+        tp = self.track.trackpoints[i_tp]
+        pm = self.track.relevant_places.closest_placemark(tp)
+        return {'tp': tp, 'pm': pm, 'dist': pm.distance(tp),
+                'date_fmt': tp.date_dmyy(), 'time': tp.time_hm(),
+                'name': pm.text}
 
+    def calc_distance_duration(self):
         self.distance = self.track.distance_along_path(self.i_first_tp,
                                                        self.i_last_tp)
-        #self.duration_s = self.start_tp.seconds(self.end_tp)
         self.duration_s = self.first['tp'].seconds(self.last['tp'])
-        self._parse_segment_for_peaks()
-        if self.track.diary is not None:
-            if self.track.diary.kwargs['parameters'] == "missing":
-                if self.first['dist'] > 0.05:
-                    # Over 50 metres from existing Placemark
-                    self._create_missing_start_placemark()
+        #print "distance %s duration %s" % (self.distance, self.duration_s)
 
     @staticmethod
-    def _guess_activity(seg_dict):
+    def csv_filename(seg_dict):
+        d = seg_dict['date']
+        h1 = seg_dict['time_start']
+        h2 = seg_dict['time_stop']
+        return ("%s_%s-%s.csv" % (d, h1, h2)).replace(":", "")
+
+    @staticmethod
+    def make_numeric(seg_dict):
+        # lots of trouble because no pythonic way for decimal commas
+        seg_dict['speed_fmt'] = seg_dict['speed']
+        seg_dict['distance_fmt'] = seg_dict['distance']
+        seg_dict['speed'] = float(seg_dict['speed'].replace(",", "."))
+        seg_dict['distance'] = float(seg_dict['distance'].replace(",", "."))
+        seg_dict['hm_up'] = int(seg_dict['hm_up'])
+        seg_dict['hm_down'] = int(seg_dict['hm_down'])
+        seg_dict['count'] = int(seg_dict['count'].replace(".", ""))
+        seg_dict['min_lat'] = float(seg_dict['min_lat'])
+        seg_dict['max_lat'] = float(seg_dict['max_lat'])
+        seg_dict['min_lon'] = float(seg_dict['min_lon'])
+        seg_dict['max_lon'] = float(seg_dict['max_lon'])
+
+    @staticmethod
+    def revert_numeric(seg_dict):
+        seg_dict['speed'] = seg_dict['speed_fmt']
+        seg_dict['distance'] = seg_dict['distance_fmt']
+        seg_dict.pop('speed_fmt', None)
+        seg_dict.pop('distance_fmt', None)
+
+    @staticmethod
+    def clean_before_save(seg_dict):
+        seg_dict['activity_id'] = seg_dict['new_activity']
+        seg_dict.pop('new_activity', None)
+        seg_dict.pop('reason', None)
+
+    @staticmethod
+    def csv_header_instructions(filename, seg_dict):
+        s1 = """\
+# %s -- saved %s at %s
+
+#   Segment object with %s Trackpoint objects (from Green Elk)
+"""
+        s2 = """\
+# Activity: {activity_id}
+# Track name: {name}
+# Source file: {infile}
+# Segment area: N-S {max_lat:.5f}-{min_lat:.5f} W-E {min_lon:.5f}-{max_lon:.5f}
+# Segment distance: {distance}
+# Timing: {date} {time_start}-{time_stop} (duration {duration})
+# Speed: {speed}
+"""
+        count = seg_dict['count']
+        date = fmt.current_date_yymd()
+        time = fmt.current_time_hm()
+        return s1 % (filename, date, time, count), \
+               s2.format(**seg_dict)
+
+    @staticmethod
+    def guess_activity(seg_dict):
         activity_id = seg_dict['activity_id']
         speed = seg_dict['speed']
         distance = seg_dict['distance']
@@ -1797,8 +1907,9 @@ class Segment(object):
 
     def adjust_activity(self):
         seg_dict = self.as_dict()
-        self._guess_activity(seg_dict)
+        self.guess_activity(seg_dict)
         self.activity_id = seg_dict['new_activity']
+        self.order = _activities[self.activity_id].order
 
         # After heuristics, apply forced user input
         for time_row in _time_metadata:
@@ -1810,8 +1921,9 @@ class Segment(object):
             if len(time_row.time) == 5:  # Exact time, such as 15:22
                 if seg_time_from < time_row.time < seg_time_to:
                     self.activity_id = time_row.activity_id
-                    print("adjusted activity to %s - based on individual time"
-                     % time_row.activity_id)
+                    self.order = _activities[self.activity_id].order
+                    # print "adjusted activity to %s based on individual time"
+                    #  % time_row.activity_id
                 continue
             row_split = time_row.time.split("-")
             if len(row_split) != 2:
@@ -1825,6 +1937,7 @@ class Segment(object):
             if row_time_from > seg_time_to or seg_time_from > row_time_to:
                 continue
             self.activity_id = time_row.activity_id
+            self.order = _activities[self.activity_id].order
             print("adjusted activity to %s - based on time interval"
              % time_row.activity_id)
 
@@ -1844,7 +1957,7 @@ class Segment(object):
             self.track.diary.missing_placemarks.append(pm)
             _places.add(pm)
 
-    def _parse_segment_for_peaks(self):
+    def parse_segment_for_peaks(self):
         extremes = []
         hm_up = 0
         hm_down = 0
@@ -1905,12 +2018,38 @@ class Segment(object):
             if self.track.diary.kwargs['parameters'] == "missing":
                 self._create_missing_extreme_placemarks()
 
+    def parse_segment_for_transits(self):
+        self.transits = []
+        seg_area = geo.calc_nwse(self)
+        p1 = Point(seg_area['min']['lat'], seg_area['min']['lon'])
+        p2 = Point(seg_area['max']['lat'], seg_area['max']['lon'])
+        self.relevant_breaks = Places("copy", forced_breaks=_forced_breaks,
+                                      p1=p1, p2=p2)
+        limit_dist = 0.02
+        for br in self.relevant_breaks:
+            point = Point(br.lat, br.lon)
+            #print "Relevant break %s (%s, %s)" % (br.text, br.lat, br.lon)
+            direction = br.direction
+            min_dist = 9999
+            min_i_tp = 0
+            for i_tp in range(self.i_first_tp, self.i_last_tp):
+                tp = self.track.trackpoints[i_tp]
+                dist = point.distance(tp)
+                if dist < min_dist:
+                    #min_tp = tp
+                    min_i_tp = i_tp
+                    min_dist = dist
+            #print "min_dist %s %s" % (min_dist, min_tp.time_hm())
+            if min_dist < limit_dist:
+                self.transits.append(min_i_tp)
+                #print "appended"
+
     def _create_missing_extreme_placemarks(self):
         for extreme in self.extremes:
             type_ = extreme['type']
             i_tp = extreme['i_tp']
             tp = self.track.trackpoints[i_tp]
-            closest_pm = _places.closest_placemark(tp)
+            closest_pm = self.track.relevant_places.closest_placemark(tp)
             dist = closest_pm.distance(tp)
             if dist < 0.1:
                 continue
@@ -1967,12 +2106,6 @@ class Segment(object):
                                 - self.last['tp'].datetime).seconds + 30)
         else:
             return "-"
-
-    def csv_filename(self):
-        d = self.first['tp'].date_yymd()
-        h1 = self.first['tp'].time_hms()
-        h2 = self.last['tp'].time_hms()
-        return ("%s_%s-%s.csv" % (d, h1, h2)).replace(":", "")
 
     def segment_label(self):
         return ("%s%s: %s (%s / %s = %s)" % 
@@ -2090,62 +2223,85 @@ class Track(object):
         self.name = kwargs.get('header', "")
         self.diary = kwargs.get('diary')
         self.activity_id = kwargs.get('activity_id', 'run')
-        self.main_activity_id = kwargs.get('main_activity_id', 'run')
+        self.main_activity_id = kwargs.get('main_activity_id',
+                                           self.activity_id)
 
         self.trackpoints = []
         self.segments = []
         self.breaks = []
         self.storypoints = []
         self.milestones = []
+        self.activities = [self.main_activity_id]
         self.timepoints = {}
         self.date = datetime.datetime.min
         self.timezone_delta = None
 
         if self.mode == "empty":
             return
-        self._import_file(infile, mode="skim")
-        self.map_area = geo.calc_nwse(self.trackpoints)
-        if self.mode == "skim":
+        if infile is None:
             return
-        # mode "diary"
-        if len(self.trackpoints) == 0:
-            return
-        date = self.trackpoints[0].date_yymd()
-        have_day_metadata = _day_metadata[date] != ""
-        seconds = 0
-        if have_day_metadata:
-            seconds = 60 * int(_day_metadata[date].timezone)
-            seconds = 0 if not self.from_source else seconds
-            # Don't apply time zone more than once
-            self.activity_id = _day_metadata[date].activity_id
-            if self.name == "":
-                self.name = _day_metadata[date].name
-        self.timezone_delta = datetime.timedelta(seconds=seconds)
+        if self.mode != "plan":
+            self._import_file(infile, mode="skim")
+            self.map_area = geo.calc_nwse(self.trackpoints)
+            if self.mode == "skim":
+                return
+            # mode "diary"
+            if len(self.trackpoints) == 0:
+                return
+            date = self.trackpoints[0].date_yymd()
+            have_day_metadata = _day_metadata[date] != ""
+            seconds = 0
+            if have_day_metadata:
+                seconds = 60 * int(_day_metadata[date].timezone)
+                seconds = 0 if not self.from_source else seconds
+                # Don't apply time zone more than once
+                self.activity_id = _day_metadata[date].activity_id
+                if self.name == "":
+                    self.name = _day_metadata[date].name
+            self.timezone_delta = datetime.timedelta(seconds=seconds)
         self.trackpoints = []
 
         print_filename = os.path.split(infile)[1]
         comment = self.kwargs.get('comment', "")
-        print("%s - %s: Track(%s) " % (comment, fmt.current_time_hm(),
+        if not kwargs.get('server_level') == True:
+            print("%s - %s: Track(%s) " % (comment, fmt.current_time_hm(),
                                      print_filename))
 
         # Start all over: read "skimmed" first trackpoint again from scratch
         self._import_file(infile, mode=self.mode,
                          timezone_delta=self.timezone_delta)
+        self.map_area = geo.calc_nwse(self.trackpoints)
+        p1 = Point(self.map_area['min']['lat'], self.map_area['min']['lon'])
+        p2 = Point(self.map_area['max']['lat'], self.map_area['max']['lon'])
+        self.relevant_places = Places("copy", original=_places, p1=p1, p2=p2)
         if self.mode == "diary":
             return
         self.create_timepoints()
         self._calc_timepoints()
         # self._list_timepoints()
-        self.map_area = geo.calc_nwse(self.trackpoints)
         if self.mode == "read":
-            segment = Segment(self, 0, self.count() -1, self.activity_id)
+            segment = Segment(self, 0, self.count() -1, self.activity_id,
+                              "cache")
             self.segments.append(segment)
             return
+        if self.mode == "plan":
+            self.compressed = self
+            return
         self._suggest_segments()
-        self._split_track_at_peaks()
+        for seg in self.segments:
+            seg.parse_segment_for_transits()
+        self._split_track_at_transits()
+        if self.activity_id in ['downhill', 'snowboard']:
+            self._split_track_at_peaks()
+        self.eliminate_too_short_segments()
+        self.update_previous_next_pointers()
         self.calc_track_net()
         self._adjust_segment_activities()
+        self._sort_by_activity()
+        self._calc_activities()
         self.compressed = self._compress_track()
+        self.zipped = self._compress_track(0.05)
+        # todo faster directly from .compressed?
 
     def __str__(self):
         s = "Track (%s trackpoints) " % len(self.trackpoints)
@@ -2155,6 +2311,14 @@ class Track(object):
 
     def __repr__(self):
         return str(self)
+
+    def __format__(self, fmt):
+        if fmt == 'kml':
+            return self.as_kml()
+        elif fmt == 'svg':
+            return self.as_svg()
+        elif fmt == 'json':
+            return self.as_json()
 
     def __getitem__(self, index):
         if isinstance(index, int):
@@ -2167,11 +2331,28 @@ class Track(object):
             a_str = self.as_svg()
         elif file_format == 'kml':
             a_str = self.as_kml()
-        #elif file_format == 'csv':
-        #    a_str = self.save_as_csv_files() - todo: but to which directory?
+        elif file_format == 'csv':
+            self.save_as_csv(filename)
+            return
         else:
             a_str = "unknown format %s" % str(file_format)
         lib.save_as(filename, a_str, verbose=True)
+
+    def save_as_csv(self, filename, compressed=False):
+        with open(filename, 'w') as csvfile:
+            fieldnames = ['date', 'time', 'lat', 'lon', 'alt', 'text']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            trackpoint_list = (self.compressed.trackpoints if compressed
+                               else self.trackpoints)
+            count = len(trackpoint_list)
+            item = 'trackpoint'
+            if compressed:
+                item = "compressed " + item
+            h1, h2 = lib.csv_header_instructions(count, item, filename)
+            csvfile.write("\n%s\n%s\n" % (h1, h2))
+            for trackpoint in trackpoint_list:
+                writer.writerow(trackpoint.as_dict())
 
     @logged
     def as_dict(self):
@@ -2189,7 +2370,8 @@ class Track(object):
         area_placemark = _area_places.closest_placemark(first_trackpoint)
         area = area_placemark.text
         area_parent = _areanames[area].parent
-        area_placemark = _places.closest_placemark(first_trackpoint)
+        area_placemark = self.relevant_places.closest_placemark(
+            first_trackpoint)
         area = area_placemark.text
         area_distance = area_placemark.distance(first_trackpoint)
         a_dist_fmt = fmt.km(area_distance)
@@ -2229,69 +2411,6 @@ class Track(object):
     def count(self):
         return len(self.trackpoints)
 
-    def save_as_csv_files(self, outdir):
-        fieldnames = ['date', 'time', 'lat', 'lon', 'alt', 'text']
-        i = dirs = overwrites = 0
-        for i, seg in enumerate(self.compressed.segments):
-            dir_ = os.path.join(outdir, seg.activity_id)
-            if not os.path.exists(dir_):
-                os.makedirs(dir_)
-                dirs += 1
-            filename = os.path.join(dir_, seg.csv_filename())
-            if os.path.exists(filename):
-                print("- File %s exists, is being overwritten" % filename)
-                overwrites += 1
-            with open(filename, 'w') as csvfile:
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                writer.writeheader()
-                seg_dict = {'date': seg.first['tp'].date_yymd(),
-                            'time_start': seg.first['tp'].time_hms(),
-                            'time_stop': seg.last['tp'].time_hms(),
-                            'activity_id': seg.activity_id,
-                            'distance': fmt.onedecimal(seg.distance),
-                            'duration': seg.duration_hms(),
-                            'speed': fmt.onedecimal(seg.speed()),
-                            'hm_up': seg.hm_up,
-                            'hm_down': seg.hm_down,
-                            'start_dist': fmt.onedecimal(seg.first['dist']),
-                            'name': seg.name(),
-                            'infile': self.kwargs['infile'],
-                            'max_lat': seg.map_area['max']['lat'],
-                            'min_lat': seg.map_area['min']['lat'],
-                            'max_lon': seg.map_area['max']['lon'],
-                            'min_lon': seg.map_area['min']['lon'],
-                            'count': fmt.i1000(len(seg)),
-                            }
-                self.diary.seg_dicts.append(seg_dict)
-                h1, h2 = self._csv_header_instructions(filename, seg_dict)
-                csvfile.write("\n%s\n%s\n" % (h1, h2))
-                for trackpoint in seg:
-                    writer.writerow(trackpoint.as_dict())
-        print("Saved %s csv files; %s overwritten, %s new dirs" %
-              (i, overwrites, dirs))
-
-    @staticmethod
-    def _csv_header_instructions(filename, seg_dict):
-        s1 = """\
-# %s -- saved %s at %s
-
-#   Segment object with %s Trackpoint objects (from Green Elk)
-"""
-        s2 = """\
-# Activity: {activity_id}
-# Track name: {name}
-# Source file: {infile}
-# Segment area: N-S {max_lat:.5f}-{min_lat:.5f} W-E {min_lon:.5f}-{max_lon:.5f}
-# Segment distance: {distance}
-# Timing: {date} {time_start}-{time_stop} (duration {duration})
-# Speed: {speed}
-"""
-        count = seg_dict['count']
-        date = fmt.current_date_yymd()
-        time = fmt.current_time_hm()
-        return s1 % (filename, date, time, count), \
-               s2.format(**seg_dict)
-
     def duration(self):
         first_trackpoint = self[0]
         last_trackpoint = self[self.count() - 1]
@@ -2302,20 +2421,18 @@ class Track(object):
         return "%s %s" % (date, hm_to_hm)
 
     @logged
-    def _import_file(self, filename, mode="segment", start_time=None,
-                    stop_time=None, timezone_delta=None):
+    def _import_file(self, filename, mode="segment", timezone_delta=None):
         filetype = filename.split(".")[-1]
         timezone_delta = (datetime.timedelta(seconds=0)
                           if timezone_delta is None else timezone_delta)
         if filetype == "gpx":
-            self._import_gpx(filename, timezone_delta, mode, start_time,
-                            stop_time)
+            self._import_gpx(filename, timezone_delta, mode)
         elif filetype == "csv":
-            self._import_csv(filename, timezone_delta, mode, start_time,
-                            stop_time)
+            self._import_csv(filename, timezone_delta, mode)
         elif filetype == "CSV":
-            self._import_columbus(filename, timezone_delta, mode, start_time,
-                                 stop_time)
+            self._import_columbus(filename, timezone_delta, mode)
+        elif filetype == "kml":
+            self._import_kml_plan(filename)
         if self.count() == 0:
             msg = "import_file: Cannot import file %s - zero trackpoints."
             userbug.add(msg % filename)
@@ -2324,8 +2441,7 @@ class Track(object):
         self._eliminate_still_points()
 
     @logged
-    def _import_gpx(self, filename, timezone_delta, mode="segment",
-                   start_time=None, stop_time=None):
+    def _import_gpx(self, filename, timezone_delta, mode="segment"):
         """Import from a GPX file between start and stop (times)"""
         # self.logger.lib.log_event("._import_gpx start", self.count())
         f_lat = f_lon = f_alt = f_time = ""
@@ -2364,11 +2480,6 @@ class Track(object):
                         fmt.time_from_hms(f_time))
                     a_datetime = a_datetime + timezone_delta
                 if eof_trkpt:
-                    if start_time is not None:
-                        if f_time < start_time:
-                            continue
-                        if f_time > stop_time:
-                            break
                     i += 1
                     tp = Trackpoint(f_lat, f_lon, a_datetime, f_alt)
                     self.trackpoints.append(tp)
@@ -2376,8 +2487,7 @@ class Track(object):
                         break
 
     @logged
-    def _import_columbus(self, filename, timezone_delta, mode="segment",
-                        start_time=None, stop_time=None):
+    def _import_columbus(self, filename, timezone_delta, mode="segment"):
         """Import from a CSV file between start and stop (times)"""
         with open(filename) as columbusfile:
             i = 0
@@ -2386,11 +2496,6 @@ class Track(object):
                 if not is_header:
                     fields = line.split(",")
                     f_date, f_time, f_lat, f_lon, f_alt = fields[2:7]
-                    if start_time is not None:
-                        if f_time < start_time:
-                            continue
-                        if f_time > stop_time:
-                            break
                     i += 1
                     ns = f_lat[-1]
                     if ns in "NS":
@@ -2417,9 +2522,11 @@ class Track(object):
                         break
 
     @logged
-    def _import_csv(self, filename, timezone_delta, mode="segment",
-                   start_time=None, stop_time=None):
+    def _import_csv(self, filename, timezone_delta, mode="segment"):
         """Import from a csv file between start and stop (times)"""
+        if mode == "plan":
+            self._import_csv_plan(filename)
+            return
         with open(filename) as csvfile:
             for i, line in enumerate(csvfile):
                 is_header = not line[0].isdigit()
@@ -2434,11 +2541,6 @@ class Track(object):
                         msg %= line
                         userbug.add(msg)
                         return
-                    if start_time is not None:
-                        if f_time < start_time:
-                            continue
-                        if f_time > stop_time:
-                            break
                     f_lat = float(f_lat)
                     f_lon = float(f_lon)
                     f_datetime = f_date + " " + f_time
@@ -2446,6 +2548,206 @@ class Track(object):
                     self.trackpoints.append(tp)
                     if mode == "skim":
                         break
+
+    def _import_csv_plan(self, filename):
+        f_date = ""
+        with open(filename) as csvfile:
+            reader = csv.DictReader(csvfile)
+            last_date = last_time = ""
+            speed = 0
+            tp = Trackpoint(0, 0, "2015-01-01 00:00:00")  # To shut up PyCharm
+            is_first_row = True
+            i_first_tp = i_tp = 0
+            for row in reader:
+                f_lat = float(row['lat'])
+                f_lon = float(row['lon'])
+                f_text = row['placemark']
+                f_date = row['date']
+                f_time = row['time']
+                f_break = row['break']
+                f_speed = row['speed']
+                if f_date != "":
+                    last_date = f_date
+                if last_date == "":
+                    userbug.add("No initial date supplied in %s" % filename)
+                    return
+                if f_time != "":
+                    last_time = f_time
+                    f_datetime = last_date + " " + last_time
+                    a_datetime = fmt.datetime_from_ymd_hms(f_datetime)
+                if last_time == "":
+                    userbug.add("No initial time supplied in %s" % filename)
+                    return
+                if f_speed != "":
+                    speed = float(f_speed)
+                if speed == 0:
+                    userbug.add("No initial speed supplied in %s" % filename)
+                    return
+                if is_first_row:
+                    tp = Trackpoint(f_lat, f_lon, a_datetime, text=f_text)
+                    self.trackpoints.append(tp)
+                    self.fake_relevant_places(tp)
+                else:
+                    pt = Point(f_lat, f_lon)
+                    dist = tp.distance(pt)
+                    duration_s = 3600 * dist / speed
+                    time_not_given = f_time == ""
+                    if time_not_given:
+                        a_datetime += datetime.timedelta(seconds=duration_s)
+                    tp = Trackpoint(f_lat, f_lon, a_datetime, text=f_text)
+                    self.trackpoints.append(tp)
+
+                    we_take_a_break = f_break != ""
+                    if we_take_a_break:
+                        seg = Segment(self, i_first_tp, i_tp,
+                                      self.activity_id, "plan")
+                        self.segments.append(seg)
+                        i_first_tp = i_tp + 1
+                        i_tp += 1
+                        hh, mm, ss = f_break.split(":")
+                        break_s = int(hh) * 3600 + int(mm) * 60 + int(ss)
+                        a_datetime += datetime.timedelta(seconds=break_s)
+                        b_text = "+ %s" % f_break
+                        tp = Trackpoint(f_lat, f_lon, a_datetime, text=b_text)
+                        self.trackpoints.append(tp)
+
+                i_tp += 1
+                is_first_row = False
+            seg = Segment(self, i_first_tp, i_tp - 1,
+                          self.activity_id, "plan end")
+            self.segments.append(seg)
+            for seg in self.segments:
+                print "%s-%s %s %s " % (seg.i_first_tp, seg.i_last_tp, seg.hm_to_hm(), seg.name())
+            self.name = f_date + " " + self.name
+
+    def _import_kml_plan(self, filename):
+        f = codecs.open(filename, 'r')
+        last_date = last_time = ""
+        speed = 0
+        tp = Trackpoint(0, 0, "2015-01-01 00:00:00")  # To shut up PyCharm
+        is_first_row = True
+        i_first_tp = i_tp = 0
+        is_line_string = False
+        f_lat = f_lon = f_text = f_break = f_folder = f_date = ""
+        folder_level = 0
+        folder_or_placemark = ""
+        for line in f:
+            has_folder = '<Folder>' in line
+            eof_folder = '</Folder>' in line
+            has_placemark = 'Placemark>' in line
+            eof_placemark = '</Placemark>' in line
+            has_name = '<name>' in line
+            has_coordinates = '<coordinates>' in line
+            if has_folder:
+                folder_level += 1
+                if folder_level > 1:
+                    e = "Filename %s has %s folder levels"
+                    e %= (filename, folder_level)
+                    e %= "\nbut in planning only one level is allowed"
+                    userbug.add(e)
+                folder_or_placemark = "folder"
+            if eof_folder:
+                folder_level -= 1
+            if has_placemark:
+                folder_or_placemark = "placemark"
+            if has_name:
+                tag_value = line.replace(">", "<").split('<')[2]
+                tag_value = tag_value.replace('&apos;', "'")
+                if folder_or_placemark == 'folder':
+                    f_folder = tag_value
+                else:  # placemark
+                    f_text = tag_value.replace('&apos;', "'")
+            if has_coordinates:
+                is_line_string = False
+                has_comma = ',' in line
+                if not has_comma:
+                    is_line_string = True
+                else:
+                    line = line.replace(">", "<").split('<')[2].split(',')
+                    f_lon, f_lat, f_alt = line
+            if eof_placemark:
+                if not is_line_string:
+                    if "D=" in f_text:
+                        f_date = f_text.split("D=")[1].split()[0]
+                    else:
+                        f_date = ""
+                    if "T=" in f_text:
+                        f_time = f_text.split("T=")[1].split()[0]
+                        f_time = lib.append_to_hh_mm_ss(f_time)
+                    else:
+                        f_time = ""
+                    if "P=" in f_text:
+                        f_break = f_text.split("P=")[1].split()[0]
+                        f_break = lib.append_to_hh_mm_ss(f_break)
+                    else:
+                        f_break = ""
+                    if "S=" in f_text:
+                        f_speed = f_text.split("S=")[1].split()[0]
+                        f_speed = f_speed.replace(",", ".")
+                        speed = float(f_speed)
+                    if f_date != "":
+                        last_date = f_date
+                    if last_date == "":
+                        userbug.add("No initial date supplied in %s" %
+                                    filename)
+                        last_date = "2020-01-01"
+                    if f_time != "":
+                        last_time = f_time
+                        f_datetime = last_date + " " + last_time
+                        a_datetime = fmt.datetime_from_ymd_hms(f_datetime)
+                    if last_time == "":
+                        userbug.add("No initial time supplied in %s" %
+                                    filename)
+                        last_time = "08:00"
+                    if f_speed != "":
+                        speed = float(f_speed)
+                    if speed == 0:
+                        userbug.add("No initial speed supplied in %s" %
+                                    filename)
+                        speed = 5
+                    if is_first_row:
+                        tp = Trackpoint(f_lat, f_lon, a_datetime, text=f_text)
+                        self.trackpoints.append(tp)
+                        self.fake_relevant_places(tp)
+                    else:
+                        pt = Point(f_lat, f_lon)
+                        dist = tp.distance(pt)
+                        duration = 3600 * dist / speed
+                        #print "dist %s duration %s" % (dist, duration)
+                        time_not_given = f_time == ""
+                        if time_not_given:
+                            a_datetime += datetime.timedelta(seconds=duration)
+                        #print "i_tp %s f_time %s time %s text %s" % (i_tp, f_time, a_datetime, f_text)
+                        tp = Trackpoint(f_lat, f_lon, a_datetime, text=f_text)
+                        self.trackpoints.append(tp)
+
+                        we_take_a_break = f_break != ""
+                        if we_take_a_break:
+                            seg = Segment(self, i_first_tp, i_tp,
+                                          self.activity_id, "plan")
+                            self.segments.append(seg)
+                            i_first_tp = i_tp + 1
+                            i_tp += 1
+                            hh, mm, ss = f_break.split(":")
+                            break_s = int(hh) * 3600 + int(mm) * 60 + int(ss)
+                            a_datetime += datetime.timedelta(seconds=break_s)
+                            b_text = "+ %s" % f_break
+                            tp = Trackpoint(f_lat, f_lon, a_datetime,
+                                            text=b_text)
+                            self.trackpoints.append(tp)
+
+                    i_tp += 1
+                    is_first_row = False
+        seg = Segment(self, i_first_tp, i_tp - 1, self.activity_id, "plan end")
+        self.segments.append(seg)
+        for seg in self.segments:
+            print "%s-%s %s %s " % (seg.i_first_tp, seg.i_last_tp, seg.hm_to_hm(), seg.name())
+        self.name = f_date + " " + f_folder
+
+    def fake_relevant_places(self, tp):
+        p1 = Point(int(tp.lat) - 1, int(tp.lon) - 1)
+        p2 = Point(int(tp.lat) + 1, int(tp.lon) + 1)
+        self.relevant_places = Places("copy", original=_places, p1=p1, p2=p2)
 
     def create_timepoints(self):
         def reset_values():
@@ -2515,7 +2817,7 @@ class Track(object):
                         accumulate_values()
                     time_just_minute = last_dateandtime.replace(second=0,
                                                                 microsecond=0)
-                    closest_pm = _places.closest_placemark(tp)
+                    closest_pm = self.relevant_places.closest_placemark(tp)
                     text = closest_pm.text
                     cap_values()
                     time_pt = Timepoint(lat, lon, time_just_minute, alt,
@@ -2627,7 +2929,7 @@ class Track(object):
                         "in filename %s" % self.filename)
             return 0
         prev_tp = self.trackpoints[i_from]
-        for i_tp in range(i_from + 1, i_to):
+        for i_tp in range(i_from + 1, i_to + 1):
             tp = self.trackpoints[i_tp]
             s += tp.distance(prev_tp)
             prev_tp = tp
@@ -2730,14 +3032,12 @@ class Track(object):
         dist_from_start = 0
         first_tp = self.trackpoints[0]
         break_tp = prev_tp = first_tp
-        i_tp = -1
         i_segment = 0
-        for tp in self.trackpoints:
-            i_tp += 1
+        for i_tp, tp in enumerate(self.trackpoints):
             seconds_from_start = tp.seconds(first_tp)
-            delta_s = tp.distance(prev_tp)
+            delta_dist = tp.distance(prev_tp)
             prev_tp = tp
-            dist_from_start += delta_s
+            dist_from_start += delta_dist
             distance_list.append({'s': seconds_from_start,
                                   'd': dist_from_start, 'i': i_tp})
             distance_list_length += 1
@@ -2762,6 +3062,8 @@ class Track(object):
             if window_size_s < time_window_s:
                 continue
                 # Don't start looking until minimum window is built up (again)
+            #print "%s: %.3f km %s s" % (mode, distance_within_time_window,
+            #                            window_size_s)
             if mode == "before_first_start":
                 has_started = distance_within_time_window > window_dist_km
                 if has_started:
@@ -2783,6 +3085,9 @@ class Track(object):
             if mode == "movement_happens":
                 has_stopped = distance_within_time_window < window_dist_km
                 if has_stopped:
+                    stop_msg = "%s m" % int(distance_within_time_window * 1000)
+                    stop_msg += " < %s m" % int(window_dist_m)
+                    stop_msg += " within %s s" % int(window_size_s)
                     # find the last point where movement was more than 1 metre
                     for i in range(distance_list_length - 2, -1, -1):
                         hop_km = (distance_list[i + 1]['d'] -
@@ -2795,7 +3100,8 @@ class Track(object):
                     break_tp = self.trackpoints[i_segment_last_tp]
                     i_segment += 1
                     segment = Segment(self, i_segment_first_tp,
-                                      i_segment_last_tp, activity_id)
+                                      i_segment_last_tp, activity_id,
+                                      "has_stopped %s" % stop_msg)
                     self.segments.append(segment)
                     mode = "break_time"
                     distance_list = []
@@ -2822,7 +3128,7 @@ class Track(object):
             i_segment_last_tp = self.count() - 1
             i_segment += 1
             segment = Segment(self, i_segment_first_tp, i_segment_last_tp,
-                              activity_id)
+                              activity_id, "abrupt_end")
             self.segments.append(segment)
 
         elif mode == "break_time":
@@ -2843,23 +3149,29 @@ class Track(object):
                     i_segment + 1].i_last_tp
                 self.segments[i_segment].last['time'] = self.segments[
                     i_segment + 1].last['time']
+                self.segments[i_segment].recalc()
                 del self.segments[i_segment + 1]
 
-        # Eliminate too short segments by deleting them
+    def eliminate_too_short_segments(self):
+        activity_id = self.activity_id
+        activity = _activities[activity_id]
+        time_window_s = float(activity.time_window_s.replace("s", ""))
         segment_count = len(self.segments)
         for i_segment in range(segment_count - 1, -1, -1):
             segment = self.segments[i_segment]
-            segment.calc()
+            #segment.calc()
             i_this_segment_last_tp = self.segments[i_segment].i_last_tp
             i_this_segment_first_tp = self.segments[i_segment].i_first_tp
             this_segment_last_tp = self.trackpoints[i_this_segment_last_tp]
             this_segment_first_tp = self.trackpoints[i_this_segment_first_tp]
-            segment_length = this_segment_last_tp.seconds(this_segment_first_tp)
+            segment_length = this_segment_last_tp.seconds(
+                                        this_segment_first_tp)
             can_be_deleted = segment_length < time_window_s
             can_be_deleted = can_be_deleted or segment.distance < 0.1
             if can_be_deleted:
                 del self.segments[i_segment]
 
+    def update_previous_next_pointers(self):
         # Now that the segments are clean, enter chain pointers
         # to previous segments and next segments
         previous_segment = None  # Just to shut up warning
@@ -2871,13 +3183,11 @@ class Track(object):
             first_segment = False
             previous_segment = segment
 
-        self.calc_track_net()
-
     def calc_track_net(self):
         net_dist = 0
         net_duration_s = 0
         for i, segment in enumerate(self.segments):
-            segment.calc()
+            segment.calc_distance_duration()
             net_dist += segment.distance
             net_duration_s += segment.duration_s
 
@@ -2892,6 +3202,15 @@ class Track(object):
         for i, segment in enumerate(self.segments):
             segment.adjust_activity()
 
+    def _sort_by_activity(self):
+        self.segments.sort(key=lambda x: x.order)
+
+    def _calc_activities(self):
+        for seg in self.segments:
+            activity_id = seg.activity_id
+            if activity_id not in self.activities:
+                self.activities.append(activity_id)
+
     @logged
     def _split_track_at_peaks(self):
         seg_count = len(self.segments)
@@ -2904,19 +3223,39 @@ class Track(object):
                 extreme = segment.extremes[i_extreme]
                 i_old_seg = i_seg
                 self._split_segment_at(i_old_seg, extreme['i_tp'])
-            if was_split:
-                self.segments[i_seg].calc()
-                self.segments[i_seg + 1].calc()
+            #if was_split:
+            #    self.segments[i_seg].recalc()
+            #    self.segments[i_seg + 1].recalc()
         for i, segment in enumerate(self.segments):
             if segment.activity_id in ["downhill", "snowboard"]:
                 if abs(segment.hm_up) > abs(segment.hm_down):
                     segment.activity_id = "lift"  # Todo Borest bör fixas
 
+    def _split_track_at_transits(self):
+        seg_count = len(self.segments)
+        for i_seg in range(seg_count - 1, -1, -1):
+            segment = self.segments[i_seg]
+            transit_count = len(segment.transits)
+            segment.transits.sort()
+            #if transit_count > 0:
+            #    print "splitting segment %s %s" % (i_seg, segment.hm_to_hm())
+            for i_transit in range(transit_count - 1, -1, -1):
+                transit = segment.transits[i_transit]
+                #print "i_transit %s i_tp %s" % (i_transit, transit)
+                i_old_seg = i_seg
+                self._split_segment_at(i_old_seg, transit)
+
     def _split_segment_at(self, i_seg, i_tp):
         segment = self.segments[i_seg]
-        i_old_end = segment.i_last_tp
-        new_segment = Segment(self, i_tp, i_old_end, segment.activity_id)
+        i_old_first = segment.i_first_tp
+        i_old_last = segment.i_last_tp
+        time = segment.track.trackpoints[i_tp].time_hms()
+        new_segment = Segment(self, i_tp, i_old_last, segment.activity_id,
+                              "split")
+        #print "split %s (%s-%s) at %s = %s" % (i_seg, i_old_first,
+        #                                  i_old_last, i_tp, time)
         segment.i_last_tp = i_tp
+        segment.recalc()
         self.segments.insert(i_seg + 1, new_segment)
 
     @logged
@@ -2927,6 +3266,7 @@ class Track(object):
         c_t = self.net_dist * c_t_ratio
         new_track = Track(None, mode="empty", diary=self.diary)
         new_track.segments = []
+        new_track.relevant_places = self.relevant_places
         i_new_track = 0
         i_segment = 0
 
@@ -2950,7 +3290,7 @@ class Track(object):
             i_p2_new_track = i_new_track - 1
             i_segment += 1
             new_segment = Segment(new_track, i_p1_new_track, i_p2_new_track,
-                                  segment.activity_id)
+                                  segment.activity_id, "compress")
             new_track.segments.append(new_segment)
 
         previous_segment = None  # Just to shut up warnings
@@ -2964,9 +3304,9 @@ class Track(object):
 
         new_track.calc_track_net()
 
-        print("Track compressed from %s to %s points at %s %%" % (
-            len(self.trackpoints), len(new_track.trackpoints), c_t))
-        print("old length: %s new: %s" % (self.net_dist, new_track.net_dist))
+        #print("Track compressed from %s to %s points at %s %%" % (
+        #    len(self.trackpoints), len(new_track.trackpoints), c_t))
+        #print("old length: %s new: %s" % (self.net_dist, new_track.net_dist))
         return new_track
 
     def _compress_section(self, i_p1, i_p2, c_t, c_l):
@@ -3019,10 +3359,143 @@ class Track(object):
             self._compress_section(i_pi, i_p2, c_t, c_l)
             # After the chosen intermediate point
 
+    def as_json(self):
+        tp_date = self.trackpoints[0].date_dmyy()
+        try:
+            activity_name = _activities[self.activity_id].name
+        except TypeError:
+            activity_name = ""
+        header = "%s %s %s" % (tp_date, activity_name, self.name)
+
+        k = '''\
+{"map_defaults": {
+    "center": {"lat": %s, "lon": %s},
+    "bounds": {
+        "southWest": {"lat": %s, "lon": %s},
+        "northEast": {"lat": %s, "lon": %s}
+        }
+    },\n'''
+        start_point = self.compressed.trackpoints[0]
+        end_point = self.compressed.trackpoints[-1]
+        start_time = start_point.datetime
+        end_time = end_point.datetime
+        label = "= %s / %s (%s)" % (fmt.km(self.net_dist), self.net_duration,
+                                    self.net_speed_kmh )
+        lats_lons = [self.map_area['mid']['lat'], self.map_area['mid']['lon'],
+                     self.map_area['min']['lat'], self.map_area['min']['lon'],
+                     self.map_area['max']['lat'], self.map_area['max']['lon']]
+        lats_lons = map(geo.lat_lon_5, lats_lons)
+        k = k % tuple(lats_lons)
+        k += '''\
+    "layers": {
+        "segments": {
+            "layer_type": "track",
+            "layer_title": "%s",
+            "points": ['''
+        route_is_a_loop = start_point.distance(end_point) < 0.1
+        # 100 m, hard coded
+        if route_is_a_loop:
+            k += '''
+                [{ "lat": %s, "lon": %s, "point_type": "marker-loop",
+                    "point_label": "%s", "point_datetime": "%s"}]'''
+            k = k % (label, start_point.lat_5(), start_point.lon_5(), label,
+                     end_time)
+        else:
+            k += '''
+                [{ "lat": %s, "lon": %s, "point_type": "marker-start",
+                    "point_label": "%s", "point_datetime": "%s"}],
+                [{ "lat": %s, "lon": %s, "point_type": "marker-end",
+                    "point_label": "%s", "point_datetime": "%s"}]'''
+            k = k % (label, start_point.lat_5(), start_point.lon_5(),
+                     start_time, start_time,
+                     end_point.lat, end_point.lon, label, end_time)
+        c = len(self.compressed.segments)
+        i = 0
+        for segment in self.compressed.segments:
+            i += 1
+            if i == c:
+                break  # Last segment does not end in a rest marker,
+                # but in the stop (or loop) marker
+
+            label = "%s. %s (%s UTC)" % (i, segment.break_duration_hm(),
+                                         segment.break_hm_to_hm())
+            s = ''',
+                [{ "lat": %s, "lon": %s, "point_type": "marker-rest",
+                    "point_label": "%s", "point_datetime": "%s"}]'''
+            s = s % (segment.last['tp'].lat, segment.last['tp'].lon, label,
+                     segment.last['tp'].datetime)
+            k += s
+
+        k += '''\
+                ]
+            }'''
+
+        i_segment = 0
+        for segment in self.compressed.segments:
+            i_segment += 1
+            k += ''',
+            "track%s": {
+                "layer_type": "track",
+                "layer_title": "%s",
+                "points": [\n''' % (i_segment, str(segment))
+
+            i = 0
+            c = len(self.compressed.trackpoints)
+            for tp in self.compressed.trackpoints:
+                i += 1
+                if i < segment.i_first_tp:
+                    continue
+                is_last = (i > segment.i_last_tp) or (i == c)
+                k += " " * 16 + tp.as_json_coordinate()
+                if not is_last:
+                    k += ",\n"
+                else:
+                    break
+
+            k += '''
+                ]
+                }\n'''
+
+        i_segment = 0
+        for segment in self.zipped.segments:
+            i_segment += 1
+            k += ''',
+            "trackzip%s": {
+                "layer_type": "trackzip",
+                "layer_title": "zip%s",
+                "points": [\n''' % (i_segment, str(segment))
+
+            i = 0
+            c = len(self.zipped.trackpoints)
+            for tp in self.zipped.trackpoints:
+                i += 1
+                if i < segment.i_first_tp:
+                    continue
+                is_last = (i > segment.i_last_tp) or (i == c)
+                k += " " * 16 + tp.as_json_coordinate()
+                if not is_last:
+                    k += ",\n"
+                else:
+                    break
+
+            k += '''
+                ]
+                }\n'''
+        k += '''\
+        }
+    }'''
+
+        return k
+
     def as_kml(self):
         seg_fmt = "{time_start:.5}-{time_stop:.5} {distance_fmt} "
-        seg_fmt += "{duration} {speed_fmt} km/h %s"
-        k = kml.doc_header(self.kwargs['header'])
+        seg_fmt += "{duration} {speed_fmt} %s"
+        header = self.kwargs['header']
+        param_color = self.kwargs['parameters']
+        doing_single_file = self.kwargs.get('command') == 'Track'
+        if doing_single_file:
+            header = "%s %s" % (self.date, header)
+        k = kml.doc_header(header)
         last_activity_id = last_date_name = ""
         first_activity = True
         for seg in self.compressed.segments:
@@ -3030,6 +3503,7 @@ class Track(object):
             activity_id = seg.activity_id
             activity_name = _activities[activity_id].name
             color = _activities[activity_id].color1
+            color = param_color if param_color != "" else color
             color = lib.rgb2aabbggrr(color)
             color2 = _activities[activity_id].color2
             date_name = str(seg_dict['date']) + " "  # +seg_dict['date_header']
@@ -3040,11 +3514,13 @@ class Track(object):
             new_date = date_name != last_date_name
             if new_activity_id:
                 if not first_activity:
-                    k += kml.end_section(last_date_name)
+                    if not doing_single_file:
+                        k += kml.end_section(last_date_name)
                     k += kml.end_section(last_activity_id)
                 k += kml.begin_section(activity_name, comment=activity_id)
-                k += kml.begin_section(date_name)
-            elif new_date:
+                if not doing_single_file:
+                    k += kml.begin_section(date_name)
+            elif new_date and not doing_single_file:
                 k += kml.end_section(last_date_name)
                 k += kml.begin_section(date_name)
             k += kml.placemark_header(seg_name)
@@ -3090,7 +3566,8 @@ class Track(object):
             k += milestone.as_kml()
         k += kml.end_section('Milestones')
 
-        k += kml.end_section("final " + last_date_name)
+        if not doing_single_file:
+            k += kml.end_section("final " + last_date_name)
         k += kml.end_section("final " + last_activity_id)
 
         k += kml.doc_footer()
@@ -3914,7 +4391,8 @@ class Command(object):
                 tracklist.save_as(outfile)
                 if row.parameters == "missing":
                     outfile_2 = outfile.replace(".html", "_missing.csv")
-                    tracklist.save_dynamic_placemarks_as_csv(outfile_2)
+                    tracklist.mode = "missing"
+                    tracklist.save_as(outfile_2)
             elif command == 'Timetable':
                 timetable = Timetable(**params)
                 timetable.save_as(outfile)
@@ -3987,7 +4465,7 @@ class Command(object):
         input_files = self.params['i'].split(",")
         tracklist = []
         for input_file in input_files:
-            one_track = Track(input_file,
+            one_track = Track(input_file, server_level=True,
                               activity_id=self.params['iactivity'])
             first_tp = one_track.trackpoints[0]
             last_tp = one_track.trackpoints[len(one_track.trackpoints) - 1]
@@ -4095,7 +4573,7 @@ class Command(object):
                     if not exists:
                         j += 1
                         if j > 5:
-                            print "(only first five shown)"
+                            print("(only first five shown)")
                             break
                         e = "Placetype %s (%s)" % (i, pt.id)
                         e += " has missing svg file %s" % filename
@@ -4221,7 +4699,7 @@ kml = geo.KML()
 
 userbug = lib.Userbug('kajgps')
 
-csv_filename = dict(
+svg_filename = dict(
     svg_icons='ge_svg_icons.svg',)
 
 config_files = {
@@ -4250,8 +4728,9 @@ config_files = {
     'Placetype': {'filename': 'ge_placetypes.csv', 'item': 'Placetype',
                   'fields': 'id category url svg color ' +
                             'prominence terra'},
-    'Forcedbreak': {'filename': 'ge_forcedbreaks.csv', 'item': 'Forcedbreak',
-                    'fields': 'breakpoint lat lon from_activity to_activity'},
+    'Forced_break': {'filename': 'ge_forced_breaks.csv',
+                     'item': 'Forced_break', 'fields':
+                        'text lat lon from_activity to_activity direction'},
 }
 
 _config_file_dir = os.path.expanduser(config.dir['config_file_dir'])
@@ -4276,8 +4755,8 @@ _area_places = Places(None)
 for areaname in _areanames:
     _area_places.pm_list.append(Placemark(areaname.placemark,
                                           areaname.lat, areaname.lon))
-_forcedbreaks = lib.Config(**config_files['Forcedbreak'])
-_svg_icon_file = os.path.join(_config_file_dir, csv_filename['svg_icons'])
+_forced_breaks = lib.Config(**config_files['Forced_break'])
+_svg_icon_file = os.path.join(_config_file_dir, svg_filename['svg_icons'])
 
 colors = lib.Config(**config_files['Colors'])
 _colors = {}

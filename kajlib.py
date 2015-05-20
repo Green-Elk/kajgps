@@ -20,6 +20,8 @@ import kajhtml
 from kajhtml import td, tdr, th, thr
 
 
+_debug_object = kajhtml.HTML
+
 def start_log(debug_object, text=""):
     now = datetime.datetime.now()
     print("start_log %s" % now)
@@ -34,7 +36,8 @@ def log_event(text, count=None, decorated=False):
     if decorated and _log.get('object') != _debug_object:
         return
     current = datetime.datetime.now()
-    print("log_event %s" % current)
+    resp = str(current - _log['start_time'])
+    print("log_event %s - %s" % (current, resp))
     delta = current - _log['last_time']
     count_text = " (%s)" % count if count is not None else ""
     _log['last_time'] = current
@@ -63,6 +66,7 @@ def log_rpt_html():
 
 
 def logged(func):
+    global _log, _debug_object
     @wraps(func)
     def wrapper(*args, **kwargs):
         if args[0].__class__.__name__ != _debug_object:
@@ -117,6 +121,14 @@ def save_as(filename, a_str, verbose=False):
             chars = i1000((len(a_str)))
             print("%s chars saved into file %s" % (chars, filename))
     return val
+
+
+def append_to_hh_mm_ss(a_time_str):
+    if a_time_str.count(":") < 1:
+        return a_time_str + ":00:00"
+    elif a_time_str.count(":") < 2:
+        return a_time_str + ":00"
+    return a_time_str
 
 
 def i1000(an_int):
