@@ -18,7 +18,6 @@ import importlib
 
 from kajlib import logged
 from kajhtml import tr, td, tdr, red
-import config  # Potentially overridden in _server_level_code
 import kajgeo as geo
 import kajfmt as fmt
 import kajlib as lib
@@ -2401,6 +2400,24 @@ class Track(object):
         if isinstance(index, int):
             return self.trackpoints[index]
 
+    def append(self, other_track):
+        other_start = other_track.trackpoints[0].datetime
+        this_start = self.trackpoints[0].datetime
+        other_is_later = other_start > this_start
+        if other_is_later:
+            for other_tp in other_track.trackpoints:
+                self.trackpoints.append(other_tp)
+            self.map_area = geo.calc_nwse(self.trackpoints)
+            self.calc_track_net()
+            self._suggest_segments()
+            self.compressed_track = self._compress_track()
+            self.zipped_track = self._compress_track(0.05)
+        else:
+            e = "Track.append(): To be appended track %s (%s) starts "
+            e += "before base track %s (%s)"
+            e %= (other_track.name, other_start, self.name, this_start)
+            raise Exception(e)
+
     @logged
     def save_as(self, filename):
         file_format = filename.split(".")[-1]
@@ -3572,7 +3589,7 @@ class Track(object):
     @logged
     def _compress_track(self, c_t_ratio=None):
         if c_t_ratio is None:
-            c_t_ratio = float(config.config['compression_tolerance'])
+            c_t_ratio = 0.00001
             # such as 0.005 = 0,5 % of the length
         c_t = self.net_dist * c_t_ratio
         new_track = Track(None, mode="empty", diary=self.diary)
@@ -4907,22 +4924,8 @@ class Command(object):
 
         if verbose:
             print("kajgps.py: Check status %s\n" % fmt.current_timestamp())
-            config_py = sys.argv[0]
-            config_py_dir = os.path.dirname(os.path.realpath(config_py))
-            config_py_filename = os.path.join(config_py_dir, config_py)
-            unexpanded = config.dir['config_file_dir']
-            expanded = os.path.expanduser(unexpanded)
-            was_expanded = expanded != unexpanded
-            print("kajgps Python configuration file: %s" % config_py_filename)
-            print("- there, config_file_dir is set to %s" % unexpanded)
-            if was_expanded:
-                print("- this is expanded to %s" % expanded)
-            exists = os.path.exists(expanded)
-            if not exists:
-                print("- Error! This path (%s) does not exist!" % expanded)
-                return
 
-            print("\nParsing config .csv files in %s" % expanded)
+            print("\nParsing config .csv files in %s" % _config_file_dir)
         files = [['1. Commands (change always)', ['Commands']],
                  ['2. User data (change sometimes)',
                       ['Places', 'Areaname', 'Day_metadata', 'Time_metadata']],
@@ -5060,8 +5063,9 @@ config_files = {
                         'text lat lon from_activity to_activity direction'},
 }
 
-_config_file_dir = os.path.expanduser(config.dir['config_file_dir'])
-# todo _icon_dir = os.path.expanduser(config.dir['icon_dir'])
+_py_dir = os.path.dirname(os.path.realpath(__file__))
+_config_file_dir = os.path.join(_py_dir, "config")
+_icon_dir = os.path.join(_py_dir, "svg")
 
 for conf in config_files:
     config_files[conf]['dir_'] = _config_file_dir
