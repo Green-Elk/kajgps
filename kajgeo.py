@@ -152,16 +152,43 @@ class KML(object):
         self.heading_level = 0
         self.stamp = ""
 
-    def doc_header(self, doc_name):
+    def doc_header(self, doc_name, version="2.1"):
         self.stamp = "Copyright green-elk.com %s" % strftime("%d.%m.%Y %H:%M")
+        if version == "2.2":
+            xmlns = """xmlns:gx="http://www.google.com/kml/ext/2.2"
+            xmlns:kml="http://www.opengis.net/kml/2.2"
+            xmlns:atom="http://www.w3.org/2005/Atom" """
+        else:
+            xmlns = 'xmlns:kml21="http://earth.google.com/kml/2.1"'
 
         k = """\
 <?xml version="1.0" ?>
-<kml xmlns="http://www.opengis.net/kml/2.2"\
- xmlns:kml21="http://earth.google.com/kml/2.1">
+<kml xmlns="http://www.opengis.net/kml/2.2" %s>
 <!-- %s -->\n
 <Document><name>%s</name>\n\n"""
-        return k % (self.stamp, doc_name)
+        return k % (xmlns, self.stamp, doc_name)
+
+    @staticmethod
+    def tour_header(doc_name, pt):
+        k = """\
+	<Folder>
+		<name>Tour %s</name>
+		<open>1</open>
+		<description><![CDATA[In cities, turn on the 3D building layer]]>
+		</description>
+		%s
+        <gx:Tour>
+        <name>Start the tour here</name>
+            <gx:Playlist>\n"""
+        return k % (doc_name, KML.look_at(pt))
+
+    @staticmethod
+    def tour_footer():
+        k = """\
+			</gx:Playlist>
+		</gx:Tour>
+    </Folder>"""
+        return k
 
     @staticmethod
     def doc_footer():
@@ -241,3 +268,39 @@ class KML(object):
     @staticmethod
     def multigeometry_footer():
         return "</MultiGeometry>\n"
+
+    @staticmethod
+    def look_at(pt):
+        k = """<LookAt><!-- %s -->
+                <longitude>%s</longitude>
+                <latitude>%s</latitude>
+                <altitude>0</altitude>
+                <heading>%s</heading>
+                <tilt>%s</tilt>
+                <range>%s</range>
+                <altitudeMode>relativeToGround</altitudeMode>
+            </LookAt>"""
+        return k % (pt.text, pt.lon, pt.lat, pt.heading, pt.tilt, pt.range)
+
+    @staticmethod
+    def fly_to(duration, pt, wait=""):
+        gx_wait = ("" if wait == "" else
+                   "<gx:Wait><gx:duration>%s</gx:duration></gx:Wait>\n" % wait)
+        k = """\t\t<gx:FlyTo>
+            <gx:duration>%s</gx:duration>
+            <gx:flyToMode>smooth</gx:flyToMode>
+            %s
+        </gx:FlyTo>
+        %s"""
+        return k % (duration, KML.look_at(pt), gx_wait)
+
+    @staticmethod
+    def overlay():
+        return """
+        <ScreenOverlay> <name>Left</name>
+            <Icon>
+                <href>https://lh3.googleusercontent.com/-HlQY-Cq_Ij8/VWWfdMCxPlI/AAAAAAAAUyY/VAAAWiGU_F0/s144/Green-Elk-Round_plus_URL-white-tv.png</href>
+            </Icon>
+            <overlayXY x="0" y="1" xunits="fraction" yunits="fraction"/>
+            <screenXY x="0.02" y="0.98" xunits="fraction" yunits="fraction"/>
+        </ScreenOverlay>\n"""

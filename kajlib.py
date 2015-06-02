@@ -136,6 +136,12 @@ def i1000(an_int):
     return "{0:,}".format(an_int).replace(",", ".")
 
 
+def frange(x, y, jump):
+  while x < y:
+    yield x
+    x += jump
+
+
 def csv_header_instructions(count, item, filename):
     s1 = """\
 # Saved %s Green Elk %ss on %s
