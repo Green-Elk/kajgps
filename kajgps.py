@@ -15,6 +15,7 @@ import sys
 import os
 import csv
 import importlib
+import json
 
 from kajlib import logged
 from kajhtml import tr, td, tdr, red
@@ -671,8 +672,7 @@ class Places(object):
     def save_as_csv(self, filename):
         with open(filename, 'w') as csvfile:
             fieldnames = ['placemark', 'descr', 'placetype_id', 'prominence',
-                          'lat', 'lon', 'alt', 'descr',
-                          'color', 'folder']
+                          'lat', 'lon', 'alt', 'folder', 'color']
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
             h1, h2 = self._csv_header_instructions(filename)
@@ -2524,6 +2524,8 @@ class Track(object):
             self._import_columbus(filename, timezone_delta, mode)
         elif filetype == "kml":
             self._import_kml_plan(filename)
+        elif filetype == "json":
+            self._import_json(filename)
         if self.count() == 0:
             msg = "import_file: Cannot import file %s - zero trackpoints."
             userbug.add(msg % filename)
@@ -2543,11 +2545,14 @@ class Track(object):
         a_datetime = datetime.datetime.min
         with open(filename) as gpxfile:
             i = 0
+            f_hr = f_temp = ""
             for line in gpxfile:
                 lat_pos = line.find('lat="')
                 lon_pos = line.find('lon="')
                 has_ele = '<ele>' in line
                 has_time = '<time>' in line
+                has_hr = ':hr>' in line
+                has_temp = ':atemp>' in line
                 eof_trkpt = '</trkpt>' in line
                 if lat_pos > -1:
                     f_lat = float(line[lat_pos:].split('"')[1])
@@ -2556,6 +2561,12 @@ class Track(object):
                     continue
                 if has_ele:
                     f_alt = float(line.replace(">", "<").split('<')[2])
+                    continue
+                if has_hr:
+                    f_hr = int(line.replace(">", "<").split('<')[2])
+                    continue
+                if has_temp:
+                    f_temp = int(line.replace(">", "<").split('<')[2])
                     continue
                 if has_time:
                     line = line.replace(">", "<").split('<')[2].split('T')
@@ -2572,8 +2583,14 @@ class Track(object):
                     a_datetime = a_datetime + timezone_delta
                 if eof_trkpt:
                     i += 1
-                    tp = Trackpoint(f_lat, f_lon, a_datetime, f_alt)
+                    f_text = ""
+                    if f_hr != "":
+                        f_text = "hr %s " % f_hr
+                    if (f_temp != ""):
+                        f_text += "temp %s" % f_temp
+                    tp = Trackpoint(f_lat, f_lon, a_datetime, f_alt, f_text)
                     self.trackpoints.append(tp)
+                    f_hr = f_temp = ""
                     if mode == "skim":
                         break
 
@@ -2650,6 +2667,19 @@ class Track(object):
                     self.trackpoints.append(tp)
                     if mode == "skim":
                         break
+
+    @logged
+    def _import_json(self, filename):
+        with open(filename) as f:
+            content = f.read()
+            j = json.loads(content)
+
+        start_time = fmt.datetime_from_ymd_hms(str(j[u'start_time']))
+        for pt in j[u'data']:
+            lat, lon, sec = pt
+            dateandtime = start_time + datetime.timedelta(0, sec)
+            tp = Trackpoint(lat, lon, dateandtime)
+            self.trackpoints.append(tp)
 
     def _import_csv_plan(self, filename):
         f_date = ""
@@ -3157,7 +3187,7 @@ class Track(object):
                         placetype_id = tick % 10
                         if placetype_id == 0:
                             placetype_id = 10
-                        descr = "%s km" % tick
+                        descr = "%s km" % int(tick * equidistance)
                         placetype_id = str(placetype_id)
                         if type_ == "Placemark":
                             pm = Placemark(text, mid_lat, mid_lon, descr=descr,
