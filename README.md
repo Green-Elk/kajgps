@@ -47,7 +47,7 @@ Python command level)
 * GPLv3
 * Copyright 2015 Green Elk [green-elk.com](http://www.green-elk.com) 
 (Out-Sports Adventures Ab), Nagu, Finland
-* Author Kaj Arnö [kajarno.com](kajarno.com)
+* Author Kaj Arnö [kajarno.com](https://kajarno.com)
 
 ## Installation ##
 
