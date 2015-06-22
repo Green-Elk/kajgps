@@ -54,20 +54,20 @@ Python command level)
 1. On **GitHub**, go to `https://github.com/Green-Elk/kajgps`
 2. Click on the **`Download ZIP`** button in the lower right. 
    * You’ll get a zip file called `kajgps-master.zip`. 
-3. Unzip `kajgps-master.zip` in the directory where you want to keep 
+3. **Unzip** `kajgps-master.zip` in the directory where you want to keep 
 the source code 
    * We recommend `Code` under your home directory) 
    * The unzip process will create `Code/kajgps-master` as a directory
    * We recommend you to rename to to simply `Code/kajgps`
-4. Check your installation from the operating system command level
+4. **Check** your installation from the operating system command level
    * `kajgps$ python kajgps.py check`
 
 ## Configuration ##
 
-1. Read the blog entry "Using kajgps to make sense of your outdoors 
+1. Read the **blog entry** "Using kajgps to make sense of your outdoors 
 adventure tracks"
   * which expands upon the very brief elements below
-2. Adapt the files in `~/Code/kajgps/config` to your needs, using a text editor 
+2. **Adapt the core files** in `~/Code/kajgps/config` to your needs, using a text editor 
 (if needed, in combination with a spreadsheet and kajgps.py itself)
   * `ge_places.csv` with your placemarks
   * `ge_areas.csv` with your placemark hierarchy
@@ -85,14 +85,14 @@ also adapt the following `~/Code/kajgps/config` files
   
 ## Running kajgps.py ##
 
-* Enter your parameters into `~/Code/kajgps/config/ge_commands.csv` (with your 
-favourite text editor)
+* Enter your **parameters** into `~/Code/kajgps/config/ge_commands.csv` 
+(with your favourite text editor)
   * In this comma-separated file, enter parameters, source data files, and 
   destination files in the corresponding columns
-* From the command level, run
+* From the **command level** of the operating system, run
   * `cd ~/Code/kajgps`
   * `python kajgps.py`
-* Repeat as necessary
+* **Repeat** as necessary
   * Refine your parameters as needed 
   * Re-issue `python kajgps.py` as needed
   * Review and use the output data (GPX, HTML, SVG, CSV) in the corresponding 

@@ -138,6 +138,15 @@ class Trackpoint(Point):
                 'text': self.text, 'date': self.datetime.date(),
                 'time': self.datetime.time()}
 
+    def as_gpx(self):
+        g = """
+     <trkpt lat="%s" lon="%s">
+        <ele>%s</ele>
+        <time>%sT%sZ</time>
+      </trkpt>\n"""
+        return g % (self.lat_5(), self.lon_5(), self.alt,
+                    self.date_yymd(), self.time_hms())
+
     def date_yymd(self):  # "2012-11-10"
         return fmt.yymd(self.datetime)
 
@@ -2425,6 +2434,8 @@ class Track(object):
             a_str = self.as_svg()
         elif file_format == 'kml':
             a_str = self.as_kml()
+        elif file_format == 'gpx':
+            a_str = self.as_gpx()
         elif file_format == 'csv':
             self.save_as_csv(filename)
             return
@@ -2925,11 +2936,12 @@ class Track(object):
         f = codecs.open(filename, 'r')
         last_date = last_time = ""
         speed = 0
-        tp = Trackpoint(0, 0, "2015-01-01 00:00:00")  # To shut up PyCharm
+        tp = Trackpoint(0, 0, "2016-01-01 00:00:00")  # To shut up PyCharm
+        a_datetime = tp.datetime
         is_first_row = True
         i_first_tp = i_tp = 0
         is_line_string = False
-        f_lat = f_lon = f_text = f_break = f_folder = f_date = ""
+        f_lat = f_lon = f_text = f_folder = f_date = f_speed = ""
         folder_level = 0
         folder_or_placemark = ""
         for line in f:
@@ -3013,7 +3025,7 @@ class Track(object):
                     else:
                         pt = Point(f_lat, f_lon)
                         dist = tp.distance(pt)
-                        duration = 3600 * dist / speed
+                        duration = int(3600 * dist / speed)
                         #print "dist %s duration %s" % (dist, duration)
                         time_not_given = f_time == ""
                         if time_not_given:
@@ -3843,6 +3855,28 @@ class Track(object):
         }
     }'''
         return k
+
+    def as_gpx(self):
+        g = """
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<gpx xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" creator="Green Elk" version="1.1" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd http://www.garmin.com/xmlschemas/TrackPointExtension/v1 http://www.garmin.com/xmlschemas/TrackPointExtensionv1.xsd">
+  <metadata>
+    <name>%s</name>
+    <desc>%s</desc>
+    <author>
+      <name>Green Elk</name>
+    </author>
+  </metadata>
+  <trk>
+    <trkseg>\n"""
+        g %= (self.name, fmt.current_timestamp())
+        for tp in self.trackpoints:
+            g += tp.as_gpx()
+        g += """
+    </trkseg>
+  </trk>
+</gpx>"""
+        return g
 
     def as_kml(self):
         if self.mode == "tour":
