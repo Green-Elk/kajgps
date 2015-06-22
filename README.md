@@ -6,25 +6,73 @@ kaj**gps** is an app for managing your geodata, both track files and placemarks.
 
 (Pronunciation note: "*Kaj*" rhymes with "*rye*")
 
+## Purpose of kaj**gps** ##
+
+kaj**gps** is directed at GPS tracker users who wish to 
+* manage their recorded tracks
+* plan future tracks
+* manage supportive geodata: placemarks and place icons
+using an Open Source (GPLv3) application that converts geodata between
+formats such as
+* GPX (for most geodata programs)
+* KML (for Google Earth, Google Maps etc.)
+* HTML (for text based reporting and analysis of geodata)
+* CSV (for entry and editing in spreadsheets and text editors)
+* SVG (for simple vector graphics "maps" with tracks and placemarks, milestones and times, break points - but no "map canvas")
+* json and geojson (limited support, for usage in apps)
+
+## Requirements ##
+
+* Python: Python 2.7 without add-on packages
+  * Works in OS X 10.7+ as such
+* Platform: OS X (but cross platform)
+  * Developed first under OS X 10.6, now OS X 10.10
+  * Is coded to be cross-platform but currently testing is not done outside OS X
+  * Actionable bug reports (preferrably with suggested patches) to make kajgps platform independent will be implemented
+
+## User interface ##
+
+* kajgps.py has no graphical user interface
+* kajgps.py works with text files in various formats (.csv .gpx etc.)
+* kajgps.py works from the command line (either operating system level or Python command level)
+
+## License and copyright ##
+
+* GPLv3
+* Copyright 2015 [Green Elk](http://www.green-elk.com) (Out-Sports Adventures Ab), Nagu, Finland
+* Author Kaj Arnö (kajarno.com)
+
+## Installation ##
+
+* Download package from **GitHub**
+* Install it in a directory such as `~/Code/kajgps/`
+* Adapt the files in `~/Code/kajgps/config` to your needs, using a text editor (if needed, in combination with a spreadsheet and kajgps.py itself)
+  * `ge_places.csv` with your placemarks
+  * `ge_areas.csv` with your placemark hierarchy
+  * `ge_day_metadata.csv` with timezones and sports
+  * `ge_time_metadata.csv` with exceptions to `ge_day_metadata.csv`
+  * `ge_time_metadata.csv` with exceptions to `ge_day_metadata.csv`
+* If you're using kajgps.py more liberally (in a non-outdoors-sports setting), also adapt the following `~/Code/kajgps/config` files
+  * `ge_activities.csv`, the activities of which are sports in the default Green Elk use case
+  * `ge_placetypes.csv`, where the types which relate to sports relevant placemarks
+  * `ge_forced_breaks.csv`, whereby tracks can be split up into segments when a point is passed
+  * `ge_colors.csv`, where activity specific colors are tailored
+  
+
+## Running kajgps.py ##
+
+* Enter your parameters into `~/Code/kajgps/config/ge_commands.csv` (with your favourite text editor)
+  * In this comma-separated file, enter parameters, source data files, and destination files in the corresponding columns
+* From the command level, run
+  * `cd ~/Code/kajgps`
+  * `python kajgps.py`
+* Repeat as necessary
+  * Refine your parameters as needed 
+  * Re-issue `python kajgps.py` as needed
+  * Review and use the output data (GPX, HTML, SVG, CSV) in the corresponding software (Google Earth, a browser, a spreadsheet) as needed
+
+## Further documentation ##
 
 * How are [activities](md/activities.md) allocated?
 * How are [placemarks](md/placemarks.md) entered?
-
-## Purpose of kaj**gps** ##
-
-kaj**foto** is directed at users who at times feel **more productive at the command level** than when constrained by having to use the mouse.
-
-
-For any OS X 10.6+ users: kaj**foto** enables you to
-
-1. manage backup hard disks (**mirrors**, which may be offsite)
-    * **list differences** between directories (on main HD and on mirror)
-        * create batches of "cp" commands for fixing mismatches
-    * identify and remove **unintentionally redundant** files
-        * create batches of "rm" commands for pre-meditated, careful removing of them
-2. report **statistics by directory tree**, by filetype, by year etc., in pretty-formatted HTML
-    * identify high file counts, **high disk usage**
-    * verify that files are **where you expect** them to be
-    * create a **mental picture** of your harddisk
-    * enable you to get **a sense of order**, well-founded in reality
-3. **find files** by simple or complex criteria, quicker than with `find` or `locate`
+* [Coding Guidelines for kajgps.py)[md/code_guidelines.md]
