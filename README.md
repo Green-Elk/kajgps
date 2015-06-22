@@ -1,6 +1,7 @@
 # kaj**gps**: Geodata analysis of tracks; management of placemarks (in .py)
 
-kaj**gps** is an app for managing your geodata, both track files and placemarks.
+kaj**gps** is an app for managing your geodata, both track files and 
+placemarks.
 
 ![Logo](https://lh3.googleusercontent.com/-KouDlj6ewlQ/VTUaFSBIlHI/AAAAAAAAUu0/WDKwZf2NXO8/s288/kajgps-green.png)
 
@@ -44,14 +45,14 @@ Python command level)
 ## License and copyright ##
 
 * GPLv3
-* Copyright 2015 [Green Elk](http://www.green-elk.com) (Out-Sports Adventures 
-Ab), Nagu, Finland
-* Author Kaj Arnö (kajarno.com)
+* Copyright 2015 Green Elk [green-elk.com](http://www.green-elk.com) 
+(Out-Sports Adventures Ab), Nagu, Finland
+* Author Kaj Arnö [kajarno.com](kajarno.com)
 
 ## Installation ##
 
 1. On **GitHub**, go to `https://github.com/Green-Elk/kajgps`
-2. Click on the *`Download ZIP`* button in the lower right. 
+2. Click on the **`Download ZIP`** button in the lower right. 
    * You’ll get a zip file called `kajgps-master.zip`. 
 3. Unzip `kajgps-master.zip` in the directory where you want to keep 
 the source code 
@@ -71,7 +72,6 @@ adventure tracks"
   * `ge_places.csv` with your placemarks
   * `ge_areas.csv` with your placemark hierarchy
   * `ge_day_metadata.csv` with timezones and sports
-  * `ge_time_metadata.csv` with exceptions to `ge_day_metadata.csv`
   * `ge_time_metadata.csv` with exceptions to `ge_day_metadata.csv`
 3. If you're using kajgps.py more liberally (in a non-outdoors-sports setting), 
 also adapt the following `~/Code/kajgps/config` files
@@ -95,7 +95,8 @@ favourite text editor)
 * Repeat as necessary
   * Refine your parameters as needed 
   * Re-issue `python kajgps.py` as needed
-  * Review and use the output data (GPX, HTML, SVG, CSV) in the corresponding software (Google Earth, a browser, a spreadsheet) as needed
+  * Review and use the output data (GPX, HTML, SVG, CSV) in the corresponding 
+  software (Google Earth, a browser, a spreadsheet) as needed
 
 ## Further markdown documentation ##
 
